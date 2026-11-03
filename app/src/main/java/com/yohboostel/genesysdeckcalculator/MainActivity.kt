@@ -281,20 +281,24 @@ fun GenesysApp() {
 
     MaterialTheme(colorScheme=darkColorScheme(primary=Blue,background=Navy,surface=Panel,onBackground=Color.White,onSurface=Color.White)) {
         Column(Modifier.fillMaxSize().background(Navy).padding(horizontal=16.dp)) {
-            Spacer(Modifier.height(22.dp))
-            Text("GENESYS",color=Blue,fontSize=12.sp,fontWeight=FontWeight.Bold,letterSpacing=3.sp)
-            Text("Deck Calculator",color=Color.White,fontSize=28.sp,fontWeight=FontWeight.ExtraBold)
-            Text("Catálogo completo • Importação EDOPro",color=Muted,fontSize=12.sp)
-            Spacer(Modifier.height(16.dp))
+            if(tab!=1) {
+                Spacer(Modifier.height(22.dp))
+                Text("GENESYS",color=Blue,fontSize=12.sp,fontWeight=FontWeight.Bold,letterSpacing=3.sp)
+                Text("Deck Calculator",color=Color.White,fontSize=28.sp,fontWeight=FontWeight.ExtraBold)
+                Text("Catálogo completo • Importação EDOPro",color=Muted,fontSize=12.sp)
+                Spacer(Modifier.height(16.dp))
+            } else {
+                Spacer(Modifier.height(5.dp))
+            }
             Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).padding(5.dp)) {
                 listOf("Cartas","Meu deck","Adicionar deck").forEachIndexed { index,label ->
-                    Box(Modifier.weight(1f).background(if(tab==index) Blue.copy(alpha=.20f) else Color.Transparent,RoundedCornerShape(10.dp)).clickable { tab=index }.padding(vertical=11.dp,horizontal=3.dp),contentAlignment=Alignment.Center) {
+                    Box(Modifier.weight(1f).background(if(tab==index) Blue.copy(alpha=.20f) else Color.Transparent,RoundedCornerShape(10.dp)).clickable { tab=index }.padding(vertical=7.dp,horizontal=3.dp),contentAlignment=Alignment.Center) {
                         Text(label,color=if(tab==index) Blue else Muted,fontWeight=FontWeight.Bold,fontSize=11.sp)
                     }
                 }
             }
-            Spacer(Modifier.height(12.dp))
-            if(message.isNotEmpty()) Text(message,color=if(message.contains("não") || message.contains("Falha") || message.contains("Erro")) Color(0xFFFFA0A0) else Color(0xFF79D9AD),fontSize=12.sp,modifier=Modifier.padding(vertical=4.dp))
+            Spacer(Modifier.height(if(tab==1) 4.dp else 12.dp))
+            if(message.isNotEmpty() && tab!=1) Text(message,color=if(message.contains("não") || message.contains("Falha") || message.contains("Erro")) Color(0xFFFFA0A0) else Color(0xFF79D9AD),fontSize=12.sp,modifier=Modifier.padding(vertical=4.dp))
             when(tab) {
                 0 -> {
                     Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).padding(horizontal=12.dp,vertical=5.dp),verticalAlignment=Alignment.CenterVertically) {
@@ -327,15 +331,17 @@ fun GenesysApp() {
                     }
                 }
                 1 -> {
-                    Row(verticalAlignment=Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().padding(top=3.dp,bottom=5.dp),verticalAlignment=Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("PONTUAÇÃO DO DECK",color=Muted,fontSize=10.sp,fontWeight=FontWeight.Bold)
-                            Text("$total / $limit",color=if(total>limit) Color(0xFFFF7474) else Blue,fontSize=30.sp,fontWeight=FontWeight.ExtraBold)
+                            Text(deckName,color=Color.White,fontSize=13.sp,fontWeight=FontWeight.Bold,maxLines=1)
+                            Text("PONTUAÇÃO DO DECK",color=Muted,fontSize=9.sp,fontWeight=FontWeight.Bold)
+                            Text("$total / $limit",color=if(total>limit) Color(0xFFFF7474) else Blue,fontSize=25.sp,fontWeight=FontWeight.ExtraBold)
                         }
-                        Text("${deck.size} cartas",color=Color.White,fontWeight=FontWeight.Bold)
+                        Column(horizontalAlignment=Alignment.End) {
+                            Text("${deck.size} cartas",color=Color.White,fontWeight=FontWeight.Bold,fontSize=13.sp)
+                            Text("Limite: $limit pts",color=Muted,fontSize=10.sp)
+                        }
                     }
-                    OutlinedTextField(value=deckName,onValueChange={deckName=it},label={Text("Nome do deck")},singleLine=true,modifier=Modifier.fillMaxWidth())
-                    OutlinedTextField(value=limit.toString(),onValueChange={it.toIntOrNull()?.takeIf { n -> n in 0..999 }?.let { limit=it }},label={Text("Limite de pontos")},singleLine=true,modifier=Modifier.fillMaxWidth())
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(5.dp)) {
                         DeckSection.values().forEach { area ->
                             FilterChip(selected=section==area,onClick={section=area},label={Text(when(area){DeckSection.MAIN->"Main";DeckSection.EXTRA->"Extra";DeckSection.SIDE->"Side"})})
@@ -344,7 +350,7 @@ fun GenesysApp() {
                     Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom=10.dp)) {
                         DeckSection.values().forEach { area ->
                             val areaCards=deck.filter { it.section==area }
-                            Row(Modifier.fillMaxWidth().padding(top=12.dp,bottom=8.dp),verticalAlignment=Alignment.CenterVertically) {
+                            Row(Modifier.fillMaxWidth().padding(top=6.dp,bottom=4.dp),verticalAlignment=Alignment.CenterVertically) {
                                 Text(when(area) { DeckSection.MAIN -> "DECK PRINCIPAL"; DeckSection.EXTRA -> "DECK ADICIONAL"; DeckSection.SIDE -> "DECK AUXILIAR" },color=Blue,fontWeight=FontWeight.ExtraBold,fontSize=13.sp,letterSpacing=1.sp)
                                 Spacer(Modifier.weight(1f))
                                 Text("${areaCards.size} cartas",color=Muted,fontSize=11.sp)
@@ -355,7 +361,7 @@ fun GenesysApp() {
                             } else {
                                 areaCards.chunked(5).forEach { rowCards ->
                                     Row(
-                                        modifier=Modifier.fillMaxWidth().padding(top=10.dp,bottom=3.dp),
+                                        modifier=Modifier.fillMaxWidth().padding(top=6.dp,bottom=2.dp),
                                         horizontalArrangement=Arrangement.spacedBy(5.dp)
                                     ) {
                                         rowCards.forEach { entry ->
