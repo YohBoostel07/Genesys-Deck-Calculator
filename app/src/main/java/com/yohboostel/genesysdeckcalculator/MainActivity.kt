@@ -599,12 +599,30 @@ fun GenesysApp() {
                 AlertDialog(onDismissRequest={selectedCard=null},containerColor=Panel,
                     title={Text(card.name,color=Color.White,fontWeight=FontWeight.ExtraBold)},
                     text={
-                        Row(Modifier.fillMaxWidth().heightIn(max=470.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                            AsyncImage(model=card.image,contentDescription=card.name,modifier=Modifier.width(125.dp).height(185.dp))
-                            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                                Text(card.type,color=Blue,fontSize=11.sp,fontWeight=FontWeight.Bold)
-                                Text("${card.points ?: 0} pontos Genesys",color=Color.White,fontSize=12.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=5.dp,bottom=10.dp))
-                                Text(card.desc.ifBlank { "Texto/efeito não disponível no catálogo." },color=Color.White,fontSize=12.sp,lineHeight=17.sp)
+                        Column(Modifier.fillMaxWidth()) {
+                            if(tab==2 && editingDeck) {
+                                val copies=deck.count { it.card.id==card.id }
+                                Row(Modifier.fillMaxWidth().padding(bottom=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.Center) {
+                                    Text("CÓPIAS NO DECK: $copies/3",color=Blue,fontSize=11.sp,fontWeight=FontWeight.Bold)
+                                    Spacer(Modifier.width(12.dp))
+                                    IconButton(onClick={
+                                        val index=deck.indexOfLast { it.card.id==card.id }
+                                        if(index>=0) { deck.removeAt(index); message="${card.name} removida do deck." }
+                                    },enabled=copies>0) {
+                                        Icon(Icons.Default.Remove,"Remover cópia",tint=if(copies>0) Color(0xFFFF8888) else Muted)
+                                    }
+                                    IconButton(onClick={addCardToDeck(card,section)},enabled=copies<3 && !isForbiddenGenesysCard(card)) {
+                                        Icon(Icons.Default.Add,"Adicionar cópia",tint=if(copies<3) Blue else Muted)
+                                    }
+                                }
+                            }
+                            Row(Modifier.fillMaxWidth().heightIn(max=470.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                                AsyncImage(model=card.image,contentDescription=card.name,modifier=Modifier.width(125.dp).height(185.dp))
+                                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                                    Text(card.type,color=Blue,fontSize=11.sp,fontWeight=FontWeight.Bold)
+                                    Text("${card.points ?: 0} pontos Genesys",color=Color.White,fontSize=12.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=5.dp,bottom=10.dp))
+                                    Text(card.desc.ifBlank { "Texto/efeito não disponível no catálogo." },color=Color.White,fontSize=12.sp,lineHeight=17.sp)
+                                }
                             }
                         }
                     },
