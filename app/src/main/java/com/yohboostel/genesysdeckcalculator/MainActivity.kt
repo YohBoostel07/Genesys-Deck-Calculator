@@ -225,7 +225,9 @@ fun GenesysApp() {
                         root.put("points_synced_at",System.currentTimeMillis())
                     } catch(e:Exception) {
                         officialSync=false
-                        if(root.optString("points_source")!=OFFICIAL_GENESYS_URL) {
+                        if(root.optString("points_source")==OFFICIAL_GENESYS_URL) {
+                            officialCount=(0 until cardArray.length()).count { cardArray.getJSONObject(it).optInt("genesys_points",0)>0 }
+                        } else {
                             for(i in 0 until cardArray.length()) cardArray.getJSONObject(i).remove("genesys_points")
                         }
                     }
