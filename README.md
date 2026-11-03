@@ -6,11 +6,15 @@ Aplicativo Android independente para pesquisar cartas de Yu-Gi-Oh! e montar deck
 
 Esta é a primeira base funcional do projeto:
 - Interface Android nativa com Jetpack Compose.
-- Pesquisa de cartas usando YGOPRODeck API v7 no formato Genesys e idioma português.
+- Catálogo geral de cartas retornado pela YGOPRODeck API v7, com nomes em português quando houver tradução e fallback para o nome original em inglês.
+- Pontuações Genesys associadas por ID de carta a partir da consulta específica do formato Genesys.
+- Catálogo combinado e armazenado localmente para pesquisas posteriores sem baixar tudo novamente.
 - Exibição de imagem, nome, tipo e pontuação Genesys.
 - Adição e remoção de cartas no deck.
 - Limite de até 3 cópias por carta na interface inicial.
 - Soma da pontuação e aviso visual acima de 100 pontos.
+- Organização em Main Deck, Extra Deck e Side Deck.
+- Importação de deck por código YDKE (`ydke://`) ou pelo conteúdo de arquivo `.ydk` do EDOPro.
 - Cópia da lista do deck para a área de transferência.
 - GitHub Actions configurado para compilar um APK de depuração.
 
