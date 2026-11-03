@@ -132,6 +132,16 @@ private fun parseDeckCode(raw:String): Map<DeckSection,List<Int>> {
 fun GenesysApp() {
     val context=androidx.compose.ui.platform.LocalContext.current
     val deck= remember { mutableStateListOf<DeckCard>() }
+    var catalogue by remember { mutableStateOf<List<YgoCard>>(emptyList()) }
+    var query by remember { mutableStateOf("") }
+    var importText by remember { mutableStateOf("") }
+    var deckName by remember { mutableStateOf("Meu Deck") }
+    var loading by remember { mutableStateOf(false) }
+    var importLoading by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf("") }
+    var tab by remember { mutableIntStateOf(0) }
+    var section by remember { mutableStateOf(DeckSection.MAIN) }
+    var limit by remember { mutableIntStateOf(100) }
     val savedDecks= remember {
         mutableStateListOf<SavedDeck>().apply {
             val raw=context.getSharedPreferences("genesys_decks",0).getString("saved_decks","[]") ?: "[]"
@@ -174,16 +184,6 @@ fun GenesysApp() {
         persistSavedDecks()
         message="Deck salvo: ${saved.name}"
     }
-    var catalogue by remember { mutableStateOf<List<YgoCard>>(emptyList()) }
-    var query by remember { mutableStateOf("") }
-    var importText by remember { mutableStateOf("") }
-    var deckName by remember { mutableStateOf("Meu Deck") }
-    var loading by remember { mutableStateOf(false) }
-    var importLoading by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf("") }
-    var tab by remember { mutableIntStateOf(0) }
-    var section by remember { mutableStateOf(DeckSection.MAIN) }
-    var limit by remember { mutableIntStateOf(100) }
     val scope= rememberCoroutineScope()
     val total=deck.sumOf { it.card.points ?: 0 }
     val filtered=remember(query,catalogue) {
@@ -328,7 +328,7 @@ fun GenesysApp() {
 
     MaterialTheme(colorScheme=darkColorScheme(primary=Blue,background=Navy,surface=Panel,onBackground=Color.White,onSurface=Color.White)) {
         Column(Modifier.fillMaxSize().background(Navy).padding(horizontal=16.dp)) {
-            if(tab!=3) {
+            if(tab!=2) {
                 Spacer(Modifier.height(22.dp))
                 Text("GENESYS",color=Blue,fontSize=12.sp,fontWeight=FontWeight.Bold,letterSpacing=3.sp)
                 Text("Deck Calculator",color=Color.White,fontSize=28.sp,fontWeight=FontWeight.ExtraBold)
@@ -401,6 +401,7 @@ fun GenesysApp() {
                     }
                 }
                 2 -> {
+                    OutlinedTextField(value=deckName,onValueChange={deckName=it},label={Text("Nome do deck")},singleLine=true,modifier=Modifier.fillMaxWidth())
                     Row(Modifier.fillMaxWidth().padding(top=3.dp,bottom=5.dp),verticalAlignment=Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(deckName,color=Color.White,fontSize=13.sp,fontWeight=FontWeight.Bold,maxLines=1)
