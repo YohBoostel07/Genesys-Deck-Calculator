@@ -7,6 +7,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.awaitPointerEvent
+import androidx.compose.ui.unit.IntSize
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -64,6 +70,7 @@ class MainActivity : ComponentActivity() {
 }
 
 private fun isExtraDeckMonster(card:YgoCard):Boolean = listOf("fusion","synchro","xyz","link").any { card.type.contains(it,ignoreCase=true) }
+private fun isForbiddenGenesysCard(card:YgoCard):Boolean = card.type.contains("link",ignoreCase=true) || card.type.contains("pendulum",ignoreCase=true)
 
 private fun parseCard(obj: JSONObject): YgoCard {
     val images=obj.optJSONArray("card_images")
@@ -196,6 +203,10 @@ fun GenesysApp() {
         context.getSharedPreferences("genesys_decks",0).edit().putString("saved_decks",array.toString()).apply()
     }
     fun addCardToDeck(card:YgoCard, preferredSection:DeckSection) {
+        if(isForbiddenGenesysCard(card)) {
+            message="Esta carta não é permitida no formato Genesys (Link/Pendulum)."
+            return
+        }
         val copies=deck.count { it.card.id==card.id }
         if(copies>=3) {
             message="Limite atingido: máximo de 3 cópias desta carta."
@@ -562,14 +573,37 @@ fun GenesysApp() {
                                         horizontalArrangement=Arrangement.spacedBy(5.dp)
                                     ) {
                                         rowCards.forEach { entry ->
+                                            var cardTileSize by remember(entry.card.id,area) { mutableStateOf(IntSize.Zero) }
                                             Column(
-                                                modifier=Modifier.weight(1f).clickable { if(editingDeck) { deck.remove(entry); message="${entry.card.name} removida do deck." } else selectedCard=entry.card },
+                                                modifier=Modifier.weight(1f)
+                                                    .onSizeChanged { cardTileSize=it }
+                                                    .clickable { selectedCard=entry.card }
+                                                    .pointerInput(entry,cardTileSize) {
+                                                        awaitEachGesture {
+                                                            awaitFirstDown(requireUnconsumed=false)
+                                                            var remove=false
+                                                            var released=false
+                                                            withTimeoutOrNull(2000L) {
+                                                                while(!released && !remove) {
+                                                                    val event=awaitPointerEvent()
+                                                                    val change=event.changes.firstOrNull() ?: break
+                                                                    val p=change.position
+                                                                    if(p.x<0 || p.y<0 || p.x>cardTileSize.width || p.y>cardTileSize.height) remove=true
+                                                                    if(!change.pressed) released=true
+                                                                }
+                                                            } ?: run { remove=true }
+                                                            if(remove) {
+                                                                deck.remove(entry)
+                                                                message="${entry.card.name} removida do deck."
+                                                            }
+                                                        }
+                                                    },
                                                 horizontalAlignment=Alignment.CenterHorizontally
                                             ) {
                                                 Box(Modifier.fillMaxWidth().aspectRatio(0.69f)) {
                                                     AsyncImage(
                                                         model=entry.card.image,
-                                                        contentDescription="Remover ${entry.card.name} do deck",
+                                                        contentDescription="Abrir detalhes de ${entry.card.name}",
                                                         modifier=Modifier.fillMaxSize()
                                                     )
                                                     if(entry.card.points!=null) {
