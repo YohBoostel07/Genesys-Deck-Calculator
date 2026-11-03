@@ -31,14 +31,20 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import org.jsoup.Jsoup
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.TimeUnit
+import java.text.Normalizer
+import java.util.Locale
 
 private val Navy = Color(0xFF07111F)
 private val Panel = Color(0xFF111F32)
 private val Blue = Color(0xFF38A5FF)
 private val Muted = Color(0xFF9BAEC5)
+
+private const val OFFICIAL_GENESYS_URL = "https://www.yugioh-card.com/en/genesys/"
+private fun normalizeCardName(value:String):String = Normalizer.normalize(value.lowercase(Locale.ROOT),Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"),"").replace(Regex("[^a-z0-9]"),"")
 
 data class YgoCard(val id:Int,val name:String,val type:String,val image:String,val points:Int?)
 enum class DeckSection { MAIN, EXTRA, SIDE }
@@ -144,54 +150,87 @@ fun GenesysApp() {
     fun loadCatalogue(force:Boolean=false) {
         if(loading || (catalogue.isNotEmpty() && !force)) return
         loading=true
-        message=""
+        message=if(catalogue.isEmpty()) "Carregando cartas e pontuação oficial..." else "Verificando atualizações oficiais da Konami..."
         scope.launch {
             try {
-                val cards=withContext(Dispatchers.IO) {
+                val result=withContext(Dispatchers.IO) {
                     val cache=context.getFileStreamPath("genesys_cards_all.json")
-                    val cached=if(!force && cache.exists()) cache.readText() else null
-                    val json=cached ?: run {
-                        val client=OkHttpClient.Builder()
-                            .callTimeout(90,TimeUnit.SECONDS)
-                            .connectTimeout(30,TimeUnit.SECONDS)
-                            .readTimeout(90,TimeUnit.SECONDS)
-                            .build()
-                        fun fetch(url:String): JSONObject {
-                            val request=Request.Builder().url(url).build()
-                            return client.newCall(request).execute().use { response ->
-                                if(!response.isSuccessful) throw Exception("Falha ao baixar catálogo: HTTP "+response.code)
-                                JSONObject(response.body?.string() ?: throw Exception("Resposta vazia do catálogo."))
-                            }
+                    val client=OkHttpClient.Builder().callTimeout(120,TimeUnit.SECONDS).connectTimeout(30,TimeUnit.SECONDS).readTimeout(90,TimeUnit.SECONDS).build()
+                    fun fetchText(url:String):String {
+                        val request=Request.Builder().url(url).header("User-Agent","GenesysDeckCalculator/1.0 (Android)").build()
+                        return client.newCall(request).execute().use { response ->
+                            if(!response.isSuccessful) throw Exception("HTTP "+response.code)
+                            response.body?.string() ?: throw Exception("Resposta vazia")
                         }
-                        val allData=fetch("https://db.ygoprodeck.com/api/v7/cardinfo.php").optJSONArray("data")
-                            ?: throw Exception("A base completa de cartas não foi retornada.")
+                    }
+                    val root:JSONObject
+                    if(cache.exists()) root=JSONObject(cache.readText())
+                    else {
+                        val allJson=JSONObject(fetchText("https://db.ygoprodeck.com/api/v7/cardinfo.php"))
+                        val allData=allJson.optJSONArray("data") ?: throw Exception("A base completa de cartas não foi retornada.")
                         val byId=linkedMapOf<Int,JSONObject>()
                         for(i in 0 until allData.length()) {
                             val obj=allData.getJSONObject(i)
                             byId[obj.optInt("id")]=JSONObject(obj.toString())
                         }
-                        val portuguese=fetch("https://db.ygoprodeck.com/api/v7/cardinfo.php?language=pt").optJSONArray("data")
+                        val portuguese=JSONObject(fetchText("https://db.ygoprodeck.com/api/v7/cardinfo.php?language=pt")).optJSONArray("data")
                         if(portuguese!=null) for(i in 0 until portuguese.length()) {
                             val translated=portuguese.getJSONObject(i)
-                            val target=byId[translated.optInt("id")] ?: JSONObject().also { byId[translated.optInt("id")]=it }
-                            listOf("name","type","desc").forEach { key -> if(translated.has(key)) target.put(key,translated.opt(key)) }
+                            byId[translated.optInt("id")]?.let { target ->
+                                listOf("name","type","desc").forEach { key -> if(translated.has(key)) target.put(key,translated.opt(key)) }
+                            }
                         }
-                        val genesys=fetch("https://db.ygoprodeck.com/api/v7/cardinfo.php?format=genesys").optJSONArray("data")
-                        if(genesys!=null) for(i in 0 until genesys.length()) {
-                            val pointsCard=genesys.getJSONObject(i)
-                            byId[pointsCard.optInt("id")]?.put("genesys_points",pointsCard.opt("genesys_points"))
-                        }
-                        val merged=JSONObject().put("data",org.json.JSONArray().apply { byId.values.forEach { put(it) } }).toString()
-                        context.openFileOutput("genesys_cards_all.json",0).bufferedWriter().use { writer -> writer.write(merged) }
-                        merged
+                        root=JSONObject().put("data",org.json.JSONArray().apply { byId.values.forEach { put(it) } })
                     }
-                    val array=JSONObject(json).optJSONArray("data") ?: throw Exception("O catálogo retornou um formato inesperado.")
-                    buildList { for(i in 0 until array.length()) add(parseCard(array.getJSONObject(i))) }
+                    val cardArray=root.optJSONArray("data") ?: throw Exception("O cache do catálogo está inválido.")
+                    var officialCount=0
+                    var officialSync=true
+                    try {
+                        val html=fetchText(OFFICIAL_GENESYS_URL)
+                        val officialPoints=linkedMapOf<String,Int>()
+                        Jsoup.parse(html).select("table tr").forEach { row ->
+                            val cells=row.select("th, td")
+                            if(cells.size>=2) {
+                                val cardName=cells[0].text().trim()
+                                val points=cells[cells.size-1].text().trim().toIntOrNull()
+                                if(cardName.isNotBlank() && points!=null) officialPoints[normalizeCardName(cardName)]=points
+                            }
+                        }
+                        require(officialPoints.size>=100) { "A tabela oficial da Konami não foi lida integralmente." }
+                        for(i in 0 until cardArray.length()) {
+                            val card=cardArray.getJSONObject(i)
+                            card.remove("genesys_points")
+                            officialPoints[normalizeCardName(card.optString("name"))]?.let { points ->
+                                card.put("genesys_points",points)
+                                officialCount++
+                            }
+                        }
+                        root.put("points_source",OFFICIAL_GENESYS_URL)
+                        root.put("points_synced_at",System.currentTimeMillis())
+                    } catch(e:Exception) {
+                        officialSync=false
+                        if(root.optString("points_source")!=OFFICIAL_GENESYS_URL) {
+                            for(i in 0 until cardArray.length()) cardArray.getJSONObject(i).remove("genesys_points")
+                        }
+                    }
+                    context.openFileOutput("genesys_cards_all.json",0).bufferedWriter().use { it.write(root.toString()) }
+                    val cards=buildList { for(i in 0 until cardArray.length()) add(parseCard(cardArray.getJSONObject(i))) }
+                    Triple(cards,officialCount,officialSync)
                 }
-                catalogue=cards
-                message="Catálogo carregado: ${cards.size} cartas."
-            } catch(e:Exception) { message=e.message ?: "Não foi possível carregar o catálogo." }
-            finally { loading=false }
+                catalogue=result.first
+                val updatedById=catalogue.associateBy { it.id }
+                for(index in deck.indices) {
+                    val current=deck[index]
+                    updatedById[current.card.id]?.let { deck[index]=current.copy(card=it) }
+                }
+                message=when {
+                    result.third -> "Pontuação oficial da Konami sincronizada: ${result.second} cartas atualizadas."
+                    result.second>0 -> "Sem conexão com a Konami. Mantida a última pontuação oficial salva."
+                    else -> "Catálogo carregado, mas não foi possível verificar a lista oficial de pontos. Tente atualizar novamente."
+                }
+            } catch(e:Exception) {
+                message=e.message ?: "Não foi possível carregar o catálogo."
+            } finally { loading=false }
         }
     }
 
@@ -247,7 +286,10 @@ fun GenesysApp() {
                         LinearProgressIndicator(Modifier.fillMaxWidth(),color=Blue)
                         Text("Baixando e preparando o catálogo completo...",color=Muted,fontSize=12.sp)
                     } else {
-                        Text("${catalogue.size} cartas no catálogo • pesquisa local",color=Muted,fontSize=11.sp,modifier=Modifier.padding(vertical=8.dp))
+                        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                            Text("${catalogue.size} cartas • pontos oficiais Konami",color=Muted,fontSize=11.sp,modifier=Modifier.weight(1f))
+                            TextButton(onClick={loadCatalogue(true)}) { Text("ATUALIZAR PONTOS",fontSize=10.sp) }
+                        }
                     }
                     LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp),contentPadding=PaddingValues(bottom=18.dp)) {
                         items(filtered,key={it.id}) { card ->
@@ -312,7 +354,7 @@ fun GenesysApp() {
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Text("Catálogo geral + traduções PT + pontos Genesys • cache local",color=Muted,fontSize=9.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=10.dp))
+            Text("Pontuação oficial Konami • sincronização ao abrir o app",color=Muted,fontSize=9.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=10.dp))
         }
     }
 }
