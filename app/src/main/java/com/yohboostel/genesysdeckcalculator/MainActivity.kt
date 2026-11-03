@@ -7,6 +7,7 @@ import android.util.Base64
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -666,6 +667,7 @@ fun GenesysApp() {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.instagram.com/yohann_boostel/")))
                 }.padding(top=4.dp,bottom=8.dp)
             )
+            }
         }
     }
 }
