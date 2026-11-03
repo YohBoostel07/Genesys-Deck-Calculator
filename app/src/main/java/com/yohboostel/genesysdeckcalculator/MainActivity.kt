@@ -189,6 +189,7 @@ fun GenesysApp() {
     }
     var activeDeckId by remember { mutableStateOf<String?>(null) }
     var editingDeck by remember { mutableStateOf(false) }
+    var deckSearchActive by remember { mutableStateOf(false) }
     var selectedCard by remember { mutableStateOf<YgoCard?>(null) }
     fun persistSavedDecks() {
         val array=org.json.JSONArray()
@@ -229,6 +230,8 @@ fun GenesysApp() {
         if(index>=0) savedDecks[index]=saved else savedDecks.add(saved)
         activeDeckId=id
         persistSavedDecks()
+        query=""
+        deckSearchActive=false
         message="Deck salvo: ${saved.name}"
     }
     val scope= rememberCoroutineScope()
@@ -477,62 +480,70 @@ fun GenesysApp() {
                     }
                 }
                 2 -> {
-                    OutlinedTextField(value=deckName,onValueChange={deckName=it},label={Text("Nome do deck")},singleLine=true,modifier=Modifier.fillMaxWidth(),colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,focusedLabelColor=Blue,unfocusedLabelColor=Muted,cursorColor=Blue))
-                    Row(Modifier.fillMaxWidth().padding(top=3.dp,bottom=5.dp),verticalAlignment=Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(deckName,color=Color.White,fontSize=13.sp,fontWeight=FontWeight.Bold,maxLines=1)
-                            Text("PONTUAÇÃO DO DECK",color=Muted,fontSize=9.sp,fontWeight=FontWeight.Bold)
-                            Text("$total / $limit",color=if(total>limit) Color(0xFFFF7474) else Blue,fontSize=25.sp,fontWeight=FontWeight.ExtraBold)
+                    if(editingDeck && deckSearchActive) {
+                        Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(12.dp)).padding(horizontal=10.dp,vertical=3.dp),verticalAlignment=Alignment.CenterVertically) {
+                            Icon(Icons.Default.Search,null,tint=Muted)
+                            Spacer(Modifier.width(8.dp))
+                            BasicTextField(query,{query=it},Modifier.weight(1f).padding(vertical=12.dp),singleLine=true,textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=14.sp),decorationBox={ inner -> if(query.isEmpty()) Text("Pesquise cartas para adicionar...",color=Muted,fontSize=12.sp); inner() })
+                            TextButton(onClick={deckSearchActive=false;query=""}) { Text("FECHAR",fontSize=9.sp,color=Blue) }
                         }
-                        Column(horizontalAlignment=Alignment.End) {
-                            Text("${deck.size} cartas",color=Color.White,fontWeight=FontWeight.Bold,fontSize=13.sp)
-                            Text("Limite: $limit pts",color=Muted,fontSize=10.sp)
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth().padding(top=5.dp,bottom=5.dp),verticalAlignment=Alignment.CenterVertically) {
-                        Text("SEÇÕES DO DECK",color=Muted,fontSize=10.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
-                        Button(
-                             onClick={editingDeck=!editingDeck;query=""},
-                             modifier=Modifier.height(46.dp).defaultMinSize(minWidth=124.dp),
-                             shape=RoundedCornerShape(12.dp),
-                             colors=ButtonDefaults.buttonColors(containerColor=if(editingDeck) Color(0xFF24415F) else Blue)
-                         ) {
-                             Text(if(editingDeck) "CONCLUIR" else "EDITAR DECK",color=if(editingDeck) Color.White else Navy,fontWeight=FontWeight.ExtraBold,fontSize=13.sp)
-                         }
-                    }
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)) {
-                        DeckSection.values().forEach { area ->
-                            FilterChip(selected=section==area,onClick={section=area},label={Text(when(area){DeckSection.MAIN->"Main";DeckSection.EXTRA->"Extra";DeckSection.SIDE->"Side"})},colors=FilterChipDefaults.filterChipColors(selectedContainerColor=Blue.copy(alpha=.25f),selectedLabelColor=Blue,labelColor=Color.White))
-                        }
-                    }
-                    if(editingDeck) Text("ADICIONAR CARTAS EM: "+when(section){DeckSection.MAIN->"Main Deck";DeckSection.EXTRA->"Extra Deck";DeckSection.SIDE->"Side Deck"},color=Blue,fontSize=10.sp,modifier=Modifier.padding(bottom=4.dp))
-                    if(editingDeck) Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(12.dp)).padding(horizontal=10.dp,vertical=3.dp),verticalAlignment=Alignment.CenterVertically) {
-                        Icon(Icons.Default.Search,null,tint=Muted)
-                        Spacer(Modifier.width(8.dp))
-                        BasicTextField(query,{query=it},Modifier.weight(1f).padding(vertical=11.dp),singleLine=true,textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=14.sp),decorationBox={ inner -> if(query.isEmpty()) Text("Pesquise cartas para adicionar...",color=Muted,fontSize=12.sp); inner() })
-                        if(query.isNotEmpty()) TextButton(onClick={query=""}) { Text("LIMPAR",fontSize=9.sp) }
-                    }
-                    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom=10.dp)) {
-                        if(editingDeck && query.isNotBlank()) {
-                            Text("RESULTADOS DA PESQUISA",color=Blue,fontWeight=FontWeight.ExtraBold,fontSize=11.sp,modifier=Modifier.padding(top=10.dp,bottom=5.dp))
-                            if(loading) Text("Carregando catálogo...",color=Muted,fontSize=11.sp)
-                            else if(filtered.isEmpty()) Text("Nenhuma carta encontrada.",color=Muted,fontSize=11.sp,modifier=Modifier.padding(vertical=8.dp))
-                            filtered.take(30).forEach { card ->
-                                Row(Modifier.fillMaxWidth().padding(vertical=3.dp).background(Panel,RoundedCornerShape(10.dp)).padding(7.dp),verticalAlignment=Alignment.CenterVertically) {
-                                    AsyncImage(model=card.image,contentDescription=card.name,modifier=Modifier.width(39.dp).height(56.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(card.name,color=Color.White,fontWeight=FontWeight.Bold,fontSize=11.sp,maxLines=2)
-                                        Text("${card.points ?: 0} pts • ${card.type}",color=Muted,fontSize=9.sp,maxLines=1)
-                                        Text("${deck.count { it.card.id==card.id }}/3 cópias",color=Blue,fontSize=9.sp)
+                        LazyColumn(Modifier.weight(1f).fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(7.dp),contentPadding=PaddingValues(top=8.dp,bottom=12.dp)) {
+                            if(query.isBlank()) {
+                                item { Text("Digite o nome da carta para pesquisar.",color=Muted,fontSize=11.sp) }
+                            } else if(loading) {
+                                item { Text("Carregando catálogo...",color=Muted,fontSize=11.sp) }
+                            } else if(filtered.isEmpty()) {
+                                item { Text("Nenhuma carta encontrada.",color=Muted,fontSize=11.sp) }
+                            } else {
+                                items(filtered.take(60),key={it.id}) { card ->
+                                    val copies=deck.count { it.card.id==card.id }
+                                    Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(10.dp)).padding(7.dp),verticalAlignment=Alignment.CenterVertically) {
+                                        AsyncImage(model=card.image,contentDescription=card.name,modifier=Modifier.width(43.dp).height(62.dp).clickable { selectedCard=card })
+                                        Spacer(Modifier.width(8.dp))
+                                        Column(Modifier.weight(1f).clickable { selectedCard=card }) {
+                                            Text(card.name,color=Color.White,fontWeight=FontWeight.Bold,fontSize=11.sp,maxLines=2)
+                                            Text("${card.points ?: 0} pts • ${card.type}",color=Muted,fontSize=9.sp,maxLines=1)
+                                            Text("$copies/3 cópias no deck",color=Blue,fontSize=9.sp)
+                                        }
+                                        IconButton(onClick={ if(copies>0) { val index=deck.indexOfLast { it.card.id==card.id }; if(index>=0) deck.removeAt(index); message="${card.name} removida do deck." } },enabled=copies>0) {
+                                            Icon(Icons.Default.Remove,"Remover",tint=if(copies>0) Color(0xFFFF8888) else Muted)
+                                        }
+                                        IconButton(onClick={addCardToDeck(card,section)}) { Icon(Icons.Default.Add,"Adicionar",tint=Blue) }
                                     }
-                                    IconButton(onClick={ addCardToDeck(card,section) }) { Icon(Icons.Default.Add,"Adicionar",tint=Blue) }
                                 }
                             }
-                        } else {
-                            Text("PESQUISE ACIMA PARA ADICIONAR CARTAS",color=Muted,fontSize=10.sp,modifier=Modifier.padding(top=12.dp,bottom=8.dp))
                         }
-                        run {
+                    } else {
+                        OutlinedTextField(value=deckName,onValueChange={deckName=it},label={Text("Nome do deck")},singleLine=true,modifier=Modifier.fillMaxWidth(),colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,focusedLabelColor=Blue,unfocusedLabelColor=Muted,cursorColor=Blue))
+                        Row(Modifier.fillMaxWidth().padding(top=3.dp,bottom=5.dp),verticalAlignment=Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(deckName,color=Color.White,fontSize=13.sp,fontWeight=FontWeight.Bold,maxLines=1)
+                                Text("PONTUAÇÃO DO DECK",color=Muted,fontSize=9.sp,fontWeight=FontWeight.Bold)
+                                Text("$total / $limit",color=if(total>limit) Color(0xFFFF7474) else Blue,fontSize=25.sp,fontWeight=FontWeight.ExtraBold)
+                            }
+                            Column(horizontalAlignment=Alignment.End) {
+                                Text("${deck.size} cartas",color=Color.White,fontWeight=FontWeight.Bold,fontSize=13.sp)
+                                Text("Limite: $limit pts",color=Muted,fontSize=10.sp)
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth().padding(top=5.dp,bottom=5.dp),verticalAlignment=Alignment.CenterVertically) {
+                            Text("SEÇÕES DO DECK",color=Muted,fontSize=10.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
+                            Button(onClick={editingDeck=!editingDeck;query="";deckSearchActive=false},modifier=Modifier.height(46.dp).defaultMinSize(minWidth=124.dp),shape=RoundedCornerShape(12.dp),colors=ButtonDefaults.buttonColors(containerColor=if(editingDeck) Color(0xFF24415F) else Blue)) {
+                                Text(if(editingDeck) "CONCLUIR" else "EDITAR DECK",color=if(editingDeck) Color.White else Navy,fontWeight=FontWeight.ExtraBold,fontSize=13.sp)
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)) {
+                            DeckSection.values().forEach { area ->
+                                FilterChip(selected=section==area,onClick={section=area},label={Text(when(area){DeckSection.MAIN->"Main";DeckSection.EXTRA->"Extra";DeckSection.SIDE->"Side"})},colors=FilterChipDefaults.filterChipColors(selectedContainerColor=Blue.copy(alpha=.25f),selectedLabelColor=Blue,labelColor=Color.White))
+                            }
+                        }
+                        if(editingDeck) Text("ADICIONAR CARTAS EM: "+when(section){DeckSection.MAIN->"Main Deck";DeckSection.EXTRA->"Extra Deck";DeckSection.SIDE->"Side Deck"},color=Blue,fontSize=10.sp,modifier=Modifier.padding(bottom=4.dp))
+                        if(editingDeck) Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(12.dp)).clickable { deckSearchActive=true }.padding(horizontal=10.dp,vertical=3.dp),verticalAlignment=Alignment.CenterVertically) {
+                            Icon(Icons.Default.Search,null,tint=Muted)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Pesquise cartas para adicionar...",color=Muted,fontSize=12.sp,modifier=Modifier.weight(1f).padding(vertical=11.dp))
+                        }
+                        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom=10.dp)) {
                             val area=section
                             val areaCards=deck.filter { it.section==area }
                             Row(Modifier.fillMaxWidth().padding(top=6.dp,bottom=4.dp),verticalAlignment=Alignment.CenterVertically) {
@@ -541,44 +552,27 @@ fun GenesysApp() {
                                 Text("${areaCards.size} cartas",color=Muted,fontSize=11.sp)
                             }
                             HorizontalDivider(color=Blue.copy(alpha=.35f),thickness=1.dp)
-                            if(areaCards.isEmpty()) {
-                                Text("Nenhuma carta nesta seção",color=Muted,fontSize=11.sp,modifier=Modifier.padding(vertical=14.dp))
-                            } else {
-                                areaCards.chunked(5).forEach { rowCards ->
-                                    Row(
-                                        modifier=Modifier.fillMaxWidth().padding(top=6.dp,bottom=2.dp),
-                                        horizontalArrangement=Arrangement.spacedBy(5.dp)
-                                    ) {
-                                        rowCards.forEach { entry ->
-                                            Column(
-                                                modifier=Modifier.weight(1f).clickable { selectedCard=entry.card },
-                                                horizontalAlignment=Alignment.CenterHorizontally
-                                            ) {
-                                                Box(Modifier.fillMaxWidth().aspectRatio(0.69f)) {
-                                                    AsyncImage(
-                                                        model=entry.card.image,
-                                                        contentDescription="Abrir detalhes de ${entry.card.name}",
-                                                        modifier=Modifier.fillMaxSize()
-                                                    )
-                                                    if(entry.card.points!=null) {
-                                                        Box(Modifier.align(Alignment.TopEnd).padding(2.dp).background(Blue,RoundedCornerShape(6.dp)).padding(horizontal=4.dp,vertical=2.dp)) {
-                                                            Text("${entry.card.points} pts",color=Navy,fontSize=8.sp,fontWeight=FontWeight.ExtraBold)
-                                                        }
-                                                    }
-                                                }
-                                                Text(entry.card.name,color=Color.White,fontSize=8.sp,lineHeight=9.sp,maxLines=2,minLines=2,fontWeight=FontWeight.Medium)
-                                                Text("${entry.card.points ?: 0} pts",color=Blue,fontSize=8.sp,fontWeight=FontWeight.Bold)
+                            if(areaCards.isEmpty()) Text("Nenhuma carta nesta seção",color=Muted,fontSize=11.sp,modifier=Modifier.padding(vertical=14.dp))
+                            else areaCards.chunked(5).forEach { rowCards ->
+                                Row(Modifier.fillMaxWidth().padding(top=6.dp,bottom=2.dp),horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                                    rowCards.forEach { entry ->
+                                        Column(Modifier.weight(1f).clickable { selectedCard=entry.card },horizontalAlignment=Alignment.CenterHorizontally) {
+                                            Box(Modifier.fillMaxWidth().aspectRatio(0.69f)) {
+                                                AsyncImage(model=entry.card.image,contentDescription="Abrir detalhes de ${entry.card.name}",modifier=Modifier.fillMaxSize())
+                                                if(entry.card.points!=null) Box(Modifier.align(Alignment.TopEnd).padding(2.dp).background(Blue,RoundedCornerShape(6.dp)).padding(horizontal=4.dp,vertical=2.dp)) { Text("${entry.card.points} pts",color=Navy,fontSize=8.sp,fontWeight=FontWeight.ExtraBold) }
                                             }
+                                            Text(entry.card.name,color=Color.White,fontSize=8.sp,lineHeight=9.sp,maxLines=2,minLines=2,fontWeight=FontWeight.Medium)
+                                            Text("${entry.card.points ?: 0} pts",color=Blue,fontSize=8.sp,fontWeight=FontWeight.Bold)
                                         }
-                                        repeat(5-rowCards.size) { Spacer(Modifier.weight(1f)) }
                                     }
+                                    repeat(5-rowCards.size) { Spacer(Modifier.weight(1f)) }
                                 }
                             }
+                            Text(if(editingDeck) "Toque numa carta para removê-la. Use a pesquisa para adicionar." else "Toque em EDITAR para adicionar ou remover cartas.",color=Muted,fontSize=10.sp,modifier=Modifier.padding(top=8.dp))
                         }
-                        Text(if(editingDeck) "Toque numa carta para removê-la. Use a busca para adicionar." else "Toque em EDITAR para adicionar ou remover cartas.",color=Muted,fontSize=10.sp,modifier=Modifier.padding(top=8.dp))
+                        Button(onClick={saveCurrentDeck()},modifier=Modifier.fillMaxWidth().height(46.dp),shape=RoundedCornerShape(12.dp),colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("SALVAR DECK",color=Navy,fontWeight=FontWeight.ExtraBold,fontSize=13.sp) }
+                        OutlinedButton(onClick={clipboard.setText(AnnotatedString(buildYdke(deck.toList())));message="Código YDKE copiado."},modifier=Modifier.fillMaxWidth().height(42.dp),shape=RoundedCornerShape(12.dp)) { Text("EXPORTAR / COPIAR CÓDIGO YDKE",fontSize=11.sp) }
                     }
-                    Button(onClick={saveCurrentDeck()},modifier=Modifier.fillMaxWidth().height(46.dp),shape=RoundedCornerShape(12.dp),colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("SALVAR DECK",color=Navy,fontWeight=FontWeight.ExtraBold,fontSize=13.sp) }
-                    OutlinedButton(onClick={clipboard.setText(AnnotatedString(buildYdke(deck.toList())));message="Código YDKE copiado."},modifier=Modifier.fillMaxWidth().height(42.dp),shape=RoundedCornerShape(12.dp)) { Text("EXPORTAR / COPIAR CÓDIGO YDKE",fontSize=11.sp) }
                 }
                 else -> {
                     Text("Importar deck do EDOPro",color=Color.White,fontSize=19.sp,fontWeight=FontWeight.Bold)
