@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.util.Base64
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,6 +24,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -70,6 +73,18 @@ private fun parseCard(obj: JSONObject): YgoCard {
         else -> null
     }
     return YgoCard(obj.optInt("id"),obj.optString("name"),obj.optString("type"),image,points)
+}
+
+private fun encodeYdkePart(ids:List<Int>):String {
+    val buffer=ByteBuffer.allocate(ids.size*4).order(ByteOrder.LITTLE_ENDIAN)
+    ids.forEach { buffer.putInt(it) }
+    return Base64.encodeToString(buffer.array(),Base64.NO_WRAP)
+}
+private fun buildYdke(cards:List<DeckCard>):String {
+    val main=cards.filter { it.section==DeckSection.MAIN }.map { it.card.id }
+    val extra=cards.filter { it.section==DeckSection.EXTRA }.map { it.card.id }
+    val side=cards.filter { it.section==DeckSection.SIDE }.map { it.card.id }
+    return "ydke://"+encodeYdkePart(main)+"!"+encodeYdkePart(extra)+"!"+encodeYdkePart(side)+"!"
 }
 
 private fun decodeYdkePart(part:String): List<Int> {
@@ -131,6 +146,7 @@ private fun parseDeckCode(raw:String): Map<DeckSection,List<Int>> {
 @Composable
 fun GenesysApp() {
     val context=androidx.compose.ui.platform.LocalContext.current
+    val clipboard=LocalClipboardManager.current
     val deck= remember { mutableStateListOf<DeckCard>() }
     var catalogue by remember { mutableStateOf<List<YgoCard>>(emptyList()) }
     var query by remember { mutableStateOf("") }
@@ -140,6 +156,8 @@ fun GenesysApp() {
     var importLoading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     var tab by remember { mutableIntStateOf(4) }
+    fun goBack() { tab=when(tab) { 0->2; 1->4; 2->1; 3->4; else->4 } }
+    BackHandler(enabled=tab!=4) { goBack() }
     var section by remember { mutableStateOf(DeckSection.MAIN) }
     var limit by remember { mutableIntStateOf(100) }
     val savedDecks= remember {
@@ -340,14 +358,16 @@ fun GenesysApp() {
                 Spacer(Modifier.height(5.dp))
             }
             if(tab!=4) {
-                Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).padding(5.dp)) {
+                Row(verticalAlignment=Alignment.CenterVertically) {
+                    IconButton(onClick={goBack()}) { Icon(Icons.Default.ArrowBack,contentDescription="Voltar",tint=Blue) }
+                    Row(Modifier.weight(1f).background(Panel,RoundedCornerShape(14.dp)).padding(5.dp)) {
                     listOf("Cartas","Decks","Editor","Importar").forEachIndexed { index,label ->
                         Box(Modifier.weight(1f).background(if(tab==index) Blue.copy(alpha=.20f) else Color.Transparent,RoundedCornerShape(10.dp)).clickable { tab=index }.padding(vertical=7.dp,horizontal=3.dp),contentAlignment=Alignment.Center) {
                             Text(label,color=if(tab==index) Blue else Muted,fontWeight=FontWeight.Bold,fontSize=11.sp)
                         }
                     }
+                    }
                 }
-    
             }
             Spacer(Modifier.height(if(tab==1) 4.dp else 12.dp))
             if(message.isNotEmpty() && tab!=3) Text(message,color=if(message.contains("não") || message.contains("Falha") || message.contains("Erro")) Color(0xFFFFA0A0) else Color(0xFF79D9AD),fontSize=12.sp,modifier=Modifier.padding(vertical=4.dp))
@@ -423,13 +443,14 @@ fun GenesysApp() {
                     } else {
                         LazyColumn(verticalArrangement=Arrangement.spacedBy(9.dp),contentPadding=PaddingValues(bottom=16.dp)) {
                             items(savedDecks,key={it.id}) { saved ->
-                                Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(13.dp)).clickable {
-                                    deck.clear();deck.addAll(saved.cards);deckName=saved.name;limit=saved.limit;activeDeckId=saved.id;tab=2
-                                }.padding(12.dp),verticalAlignment=Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
+                                Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(13.dp)).padding(10.dp),verticalAlignment=Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f).clickable {
+                                        deck.clear();deck.addAll(saved.cards);deckName=saved.name;limit=saved.limit;activeDeckId=saved.id;tab=2
+                                    }.padding(vertical=4.dp)) {
                                         Text(saved.name,color=Color.White,fontWeight=FontWeight.Bold,fontSize=15.sp)
-                                        Text("${saved.cards.size} cartas • ${saved.cards.sumOf { it.card.points ?: 0 }} / ${saved.limit} pts",color=Muted,fontSize=11.sp)
+                                        Text(saved.cards.size.toString()+" cartas • "+saved.cards.sumOf { it.card.points ?: 0 }+" / "+saved.limit+" pts",color=Muted,fontSize=11.sp)
                                     }
+                                    TextButton(onClick={clipboard.setText(AnnotatedString(buildYdke(saved.cards)));message="Código YDKE copiado."}) { Text("EXPORTAR",color=Blue,fontSize=10.sp) }
                                     TextButton(onClick={savedDecks.remove(saved);persistSavedDecks()}) { Text("EXCLUIR",color=Color(0xFFFF8888),fontSize=10.sp) }
                                 }
                             }
@@ -449,11 +470,13 @@ fun GenesysApp() {
                             Text("Limite: $limit pts",color=Muted,fontSize=10.sp)
                         }
                     }
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                    Text("ADICIONAR CARTAS EM",color=Muted,fontSize=10.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=5.dp,bottom=3.dp))
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)) {
                         DeckSection.values().forEach { area ->
-                            FilterChip(selected=section==area,onClick={section=area},label={Text(when(area){DeckSection.MAIN->"Main";DeckSection.EXTRA->"Extra";DeckSection.SIDE->"Side"})})
+                            FilterChip(selected=section==area,onClick={section=area},label={Text(when(area){DeckSection.MAIN->"Main";DeckSection.EXTRA->"Extra";DeckSection.SIDE->"Side"})},colors=FilterChipDefaults.filterChipColors(selectedContainerColor=Blue.copy(alpha=.25f),selectedLabelColor=Blue,labelColor=Color.White))
                         }
                     }
+                    Text("Novas cartas serão adicionadas em: "+when(section){DeckSection.MAIN->"Main Deck";DeckSection.EXTRA->"Extra Deck";DeckSection.SIDE->"Side Deck"},color=Blue,fontSize=10.sp,modifier=Modifier.padding(bottom=4.dp))
                     Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom=10.dp)) {
                         DeckSection.values().forEach { area ->
                             val areaCards=deck.filter { it.section==area }
@@ -503,6 +526,7 @@ fun GenesysApp() {
                         Button(onClick={tab=0},modifier=Modifier.weight(1f),colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("ADICIONAR CARTAS",color=Navy,fontWeight=FontWeight.Bold,fontSize=11.sp) }
                         OutlinedButton(onClick={saveCurrentDeck()},modifier=Modifier.weight(1f)) { Text("SALVAR DECK",fontSize=11.sp) }
                     }
+                    OutlinedButton(onClick={clipboard.setText(AnnotatedString(buildYdke(deck.toList())));message="Código YDKE copiado."},modifier=Modifier.fillMaxWidth()) { Text("EXPORTAR / COPIAR CÓDIGO YDKE",fontSize=11.sp) }
                 }
                 else -> {
                     Text("Importar deck do EDOPro",color=Color.White,fontSize=19.sp,fontWeight=FontWeight.Bold)
