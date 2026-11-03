@@ -63,6 +63,8 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private fun isExtraDeckMonster(card:YgoCard):Boolean = listOf("fusion","synchro","xyz","link").any { card.type.contains(it,ignoreCase=true) }
+
 private fun parseCard(obj: JSONObject): YgoCard {
     val images=obj.optJSONArray("card_images")
     val image=if(images!=null && images.length()>0) images.getJSONObject(0).optString("image_url") else ""
@@ -192,6 +194,21 @@ fun GenesysApp() {
             array.put(JSONObject().put("id",saved.id).put("name",saved.name).put("limit",saved.limit).put("cards",cardsJson))
         }
         context.getSharedPreferences("genesys_decks",0).edit().putString("saved_decks",array.toString()).apply()
+    }
+    fun addCardToDeck(card:YgoCard, preferredSection:DeckSection) {
+        val copies=deck.count { it.card.id==card.id }
+        if(copies>=3) {
+            message="Limite atingido: máximo de 3 cópias desta carta."
+            return
+        }
+        val extraMonster=isExtraDeckMonster(card)
+        val destination=if(extraMonster) {
+            if(deck.count { it.section==DeckSection.EXTRA }<15) DeckSection.EXTRA else DeckSection.SIDE
+        } else preferredSection
+        deck.add(DeckCard(card,destination))
+        message=if(extraMonster && destination==DeckSection.SIDE)
+            "${card.name} enviada ao Side Deck: Extra Deck cheio (15 cartas)."
+        else "${card.name} adicionada ao ${destination.name}."
     }
     fun saveCurrentDeck() {
         if(deck.isEmpty()) { message="Adicione cartas antes de salvar o deck."; return }
@@ -442,11 +459,7 @@ fun GenesysApp() {
                                     Text(card.type,color=Color(0xFFD2DCE8),fontSize=10.sp,maxLines=2)
                                     Text(if(card.points==null) "Sem pontuação disponível" else "${card.points} pts Genesys",color=Blue,fontWeight=FontWeight.Bold,fontSize=12.sp)
                                 }
-                                IconButton(onClick={
-                                    val copies=deck.count { it.card.id==card.id }
-                                    if(copies>=3) message="Limite atingido: máximo de 3 cópias desta carta."
-                                    else { deck.add(DeckCard(card,section));message="Carta adicionada ao ${section.name}." }
-                                }) { Icon(Icons.Default.Add,"Adicionar",tint=Blue) }
+                                IconButton(onClick={ addCardToDeck(card,section) }) { Icon(Icons.Default.Add,"Adicionar",tint=Blue) }
                             }
                         }
                     }
@@ -490,7 +503,14 @@ fun GenesysApp() {
                     }
                     Row(Modifier.fillMaxWidth().padding(top=5.dp,bottom=5.dp),verticalAlignment=Alignment.CenterVertically) {
                         Text("SEÇÕES DO DECK",color=Muted,fontSize=10.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
-                        TextButton(onClick={editingDeck=!editingDeck;query=""}) { Text(if(editingDeck) "CONCLUIR EDIÇÃO" else "EDITAR",color=Blue,fontWeight=FontWeight.ExtraBold,fontSize=11.sp) }
+                        Button(
+                             onClick={editingDeck=!editingDeck;query=""},
+                             modifier=Modifier.height(46.dp).defaultMinSize(minWidth=124.dp),
+                             shape=RoundedCornerShape(12.dp),
+                             colors=ButtonDefaults.buttonColors(containerColor=if(editingDeck) Color(0xFF24415F) else Blue)
+                         ) {
+                             Text(if(editingDeck) "CONCLUIR" else "EDITAR DECK",color=if(editingDeck) Color.White else Navy,fontWeight=FontWeight.ExtraBold,fontSize=13.sp)
+                         }
                     }
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)) {
                         DeckSection.values().forEach { area ->
@@ -518,11 +538,7 @@ fun GenesysApp() {
                                         Text("${card.points ?: 0} pts • ${card.type}",color=Muted,fontSize=9.sp,maxLines=1)
                                         Text("${deck.count { it.card.id==card.id }}/3 cópias",color=Blue,fontSize=9.sp)
                                     }
-                                    IconButton(onClick={
-                                        val copies=deck.count { it.card.id==card.id }
-                                        if(copies>=3) message="Limite atingido: máximo de 3 cópias desta carta."
-                                        else { deck.add(DeckCard(card,section));message="${card.name} adicionada ao deck." }
-                                    }) { Icon(Icons.Default.Add,"Adicionar",tint=Blue) }
+                                    IconButton(onClick={ addCardToDeck(card,section) }) { Icon(Icons.Default.Add,"Adicionar",tint=Blue) }
                                 }
                             }
                         } else {
