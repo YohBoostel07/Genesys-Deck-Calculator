@@ -247,7 +247,8 @@ fun GenesysApp() {
                         }
                     }
                     LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(7.dp),contentPadding=PaddingValues(bottom=10.dp)) {
-                        items(deck.toList().filter { it.section==section },key={ "${it.card.id}-${it.section}-${deck.indexOf(it)}" }) { entry ->
+                        items(deck.toList().filter { it.section==section }.mapIndexed { index, entry -> index to entry },key={ it.first }) { indexedEntry ->
+                            val entry=indexedEntry.second
                             Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(12.dp)).padding(8.dp),verticalAlignment=Alignment.CenterVertically) {
                                 AsyncImage(model=entry.card.image,contentDescription=entry.card.name,modifier=Modifier.width(44.dp).height(62.dp))
                                 Spacer(Modifier.width(8.dp))
