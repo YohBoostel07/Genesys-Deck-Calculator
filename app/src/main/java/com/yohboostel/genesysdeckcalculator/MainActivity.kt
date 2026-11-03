@@ -7,7 +7,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -354,25 +353,26 @@ fun GenesysApp() {
                             if(areaCards.isEmpty()) {
                                 Text("Nenhuma carta nesta seção",color=Muted,fontSize=11.sp,modifier=Modifier.padding(vertical=14.dp))
                             } else {
-                                FlowRow(
-                                    modifier=Modifier.fillMaxWidth().padding(top=10.dp,bottom=8.dp),
-                                    maxItemsInEachRow=5,
-                                    horizontalArrangement=Arrangement.spacedBy(7.dp),
-                                    verticalArrangement=Arrangement.spacedBy(12.dp)
-                                ) {
-                                    areaCards.forEach { entry ->
-                                        Column(
-                                            modifier=Modifier.width(62.dp).clickable { deck.remove(entry) },
-                                            horizontalAlignment=Alignment.CenterHorizontally
-                                        ) {
-                                            AsyncImage(
-                                                model=entry.card.image,
-                                                contentDescription="Remover ${entry.card.name} do deck",
-                                                modifier=Modifier.width(60.dp).height(87.dp)
-                                            )
-                                            Text(entry.card.name,color=Color.White,fontSize=8.sp,lineHeight=9.sp,maxLines=2,minLines=2,fontWeight=FontWeight.Medium)
-                                            Text("${entry.card.points ?: 0} pts",color=Blue,fontSize=8.sp,fontWeight=FontWeight.Bold)
+                                areaCards.chunked(5).forEach { rowCards ->
+                                    Row(
+                                        modifier=Modifier.fillMaxWidth().padding(top=10.dp,bottom=3.dp),
+                                        horizontalArrangement=Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        rowCards.forEach { entry ->
+                                            Column(
+                                                modifier=Modifier.weight(1f).clickable { deck.remove(entry) },
+                                                horizontalAlignment=Alignment.CenterHorizontally
+                                            ) {
+                                                AsyncImage(
+                                                    model=entry.card.image,
+                                                    contentDescription="Remover ${entry.card.name} do deck",
+                                                    modifier=Modifier.fillMaxWidth().aspectRatio(0.69f)
+                                                )
+                                                Text(entry.card.name,color=Color.White,fontSize=8.sp,lineHeight=9.sp,maxLines=2,minLines=2,fontWeight=FontWeight.Medium)
+                                                Text("${entry.card.points ?: 0} pts",color=Blue,fontSize=8.sp,fontWeight=FontWeight.Bold)
+                                            }
                                         }
+                                        repeat(5-rowCards.size) { Spacer(Modifier.weight(1f)) }
                                     }
                                 }
                             }
