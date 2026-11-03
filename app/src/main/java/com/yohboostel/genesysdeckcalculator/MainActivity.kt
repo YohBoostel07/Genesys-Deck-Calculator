@@ -33,7 +33,7 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
 
 private val Navy = Color(0xFF07111F)
 private val Panel = Color(0xFF111F32)
@@ -65,12 +65,18 @@ private fun parseCard(obj: JSONObject): YgoCard {
 
 private fun decodeYdkePart(part:String): List<Int> {
     if(part.isBlank()) return emptyList()
-    val bytes=try { Base64.decode(part,Base64.DEFAULT) } catch(_:Exception) { return emptyList() }
+    val bytes=try {
+        Base64.decode(part,Base64.DEFAULT)
+    } catch(_:IllegalArgumentException) {
+        throw IllegalArgumentException("O código YDKE contém uma seção Base64 inválida.")
+    }
+    require(bytes.size % 4 == 0) { "O código YDKE está incompleto ou corrompido." }
     val ids= mutableListOf<Int>()
     var offset=0
     while(offset+4<=bytes.size) {
         val id=ByteBuffer.wrap(bytes,offset,4).order(ByteOrder.LITTLE_ENDIAN).int
-        if(id>0) ids.add(id)
+        require(id>0) { "O código YDKE contém um identificador de carta inválido." }
+        ids.add(id)
         offset+=4
     }
     return ids
@@ -79,7 +85,7 @@ private fun decodeYdkePart(part:String): List<Int> {
 private fun parseDeckCode(raw:String): Map<DeckSection,List<Int>> {
     val text=raw.trim()
     if(text.startsWith("ydke://",true)) {
-        val parts=text.removePrefix("ydke://").split("!")
+        val parts=text.substringAfter("://").split("!")
         require(parts.size>=3) { "Código YDKE incompleto. Ele precisa ter Main, Extra e Side." }
         return mapOf(
             DeckSection.MAIN to decodeYdkePart(parts[0]),
@@ -145,7 +151,11 @@ fun GenesysApp() {
                     val cache=context.getFileStreamPath("genesys_cards_all.json")
                     val cached=if(!force && cache.exists()) cache.readText() else null
                     val json=cached ?: run {
-                        val client=OkHttpClient()
+                        val client=OkHttpClient.Builder()
+                            .callTimeout(90,TimeUnit.SECONDS)
+                            .connectTimeout(30,TimeUnit.SECONDS)
+                            .readTimeout(90,TimeUnit.SECONDS)
+                            .build()
                         fun fetch(url:String): JSONObject {
                             val request=Request.Builder().url(url).build()
                             return client.newCall(request).execute().use { response ->
