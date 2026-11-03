@@ -594,7 +594,7 @@ fun GenesysApp() {
                         }
                         Row(Modifier.fillMaxWidth().padding(top=5.dp,bottom=5.dp),verticalAlignment=Alignment.CenterVertically) {
                             Text("SEÇÕES DO DECK",color=Muted,fontSize=10.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
-                            Button(onClick={editingDeck=!editingDeck;query="";deckSearchActive=false},modifier=Modifier.height(46.dp).defaultMinSize(minWidth=124.dp),shape=RoundedCornerShape(12.dp),colors=ButtonDefaults.buttonColors(containerColor=if(editingDeck) Color(0xFF24415F) else Blue)) {
+                            Button(onClick={if(editingDeck) saveCurrentDeck() else { editingDeck=true;query="";deckSearchActive=false }},modifier=Modifier.height(46.dp).defaultMinSize(minWidth=124.dp),shape=RoundedCornerShape(12.dp),colors=ButtonDefaults.buttonColors(containerColor=if(editingDeck) Color(0xFF24415F) else Blue)) {
                                 Text(if(editingDeck) "CONCLUIR" else "EDITAR DECK",color=if(editingDeck) Color.White else Navy,fontWeight=FontWeight.ExtraBold,fontSize=13.sp)
                             }
                         }
@@ -635,9 +635,6 @@ fun GenesysApp() {
                                 }
                             }
                             Text(if(editingDeck) "Toque numa carta para removê-la. Use a pesquisa para adicionar." else "Toque em EDITAR para adicionar ou remover cartas.",color=Muted,fontSize=10.sp,modifier=Modifier.padding(top=8.dp))
-                        }
-                        if(editingDeck) {
-                            Button(onClick={saveCurrentDeck()},modifier=Modifier.fillMaxWidth().height(46.dp),shape=RoundedCornerShape(12.dp),colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("SALVAR DECK",color=Navy,fontWeight=FontWeight.ExtraBold,fontSize=13.sp) }
                         }
                         OutlinedButton(onClick={clipboard.setText(AnnotatedString(buildYdke(deck.toList())));message="Código YDKE copiado."},modifier=Modifier.fillMaxWidth().height(42.dp),shape=RoundedCornerShape(12.dp)) { Text("EXPORTAR / COPIAR CÓDIGO YDKE",fontSize=11.sp) }
                     }
