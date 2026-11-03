@@ -156,7 +156,7 @@ fun GenesysApp() {
     var importLoading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     var tab by remember { mutableIntStateOf(4) }
-    fun goBack() { tab=when(tab) { 0->2; 1->4; 2->1; 3->4; else->4 } }
+    fun goBack() { tab=when(tab) { 0->2; 1->4; 2->1; 3->4; 5->4; else->4 } }
     BackHandler(enabled=tab!=4) { goBack() }
     var section by remember { mutableStateOf(DeckSection.MAIN) }
     var limit by remember { mutableIntStateOf(100) }
@@ -372,6 +372,22 @@ fun GenesysApp() {
             Spacer(Modifier.height(if(tab==1) 4.dp else 12.dp))
             if(message.isNotEmpty() && tab!=3) Text(message,color=if(message.contains("não") || message.contains("Falha") || message.contains("Erro")) Color(0xFFFFA0A0) else Color(0xFF79D9AD),fontSize=12.sp,modifier=Modifier.padding(vertical=4.dp))
             when(tab) {
+                5 -> {
+                    Spacer(Modifier.height(48.dp))
+                    Text("NOVO DECK",color=Blue,fontSize=13.sp,fontWeight=FontWeight.Bold,letterSpacing=3.sp)
+                    Text("Como vamos chamar seu deck?",color=Color.White,fontSize=25.sp,fontWeight=FontWeight.ExtraBold,modifier=Modifier.padding(top=12.dp,bottom=8.dp))
+                    Text("Escolha um nome para identificar sua lista. Você poderá alterá-lo depois.",color=Muted,fontSize=13.sp)
+                    Spacer(Modifier.height(28.dp))
+                    OutlinedTextField(value=deckName,onValueChange={deckName=it},label={Text("Nome do deck")},placeholder={Text("Ex.: Meu Deck Genesys")},singleLine=true,modifier=Modifier.fillMaxWidth(),colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,focusedLabelColor=Blue,unfocusedLabelColor=Muted,cursorColor=Blue))
+                    Spacer(Modifier.height(18.dp))
+                    Button(onClick={
+                        if(deckName.isBlank()) message="Digite um nome para continuar."
+                        else { deckName=deckName.trim(); query=""; section=DeckSection.MAIN; tab=2 }
+                    },enabled=deckName.isNotBlank(),modifier=Modifier.fillMaxWidth().height(54.dp),colors=ButtonDefaults.buttonColors(containerColor=Blue)) {
+                        Text("CONTINUAR PARA PESQUISA DE CARTAS",color=Navy,fontWeight=FontWeight.ExtraBold,fontSize=12.sp)
+                    }
+                    TextButton(onClick={tab=1},modifier=Modifier.align(Alignment.CenterHorizontally)) { Text("Cancelar",color=Muted) }
+                }
                 4 -> {
                     Spacer(Modifier.height(36.dp))
                     Text("GENESYS",color=Blue,fontSize=15.sp,fontWeight=FontWeight.Bold,letterSpacing=5.sp)
@@ -389,7 +405,7 @@ fun GenesysApp() {
                         OutlinedButton(onClick={deckName="";importText="";tab=3},modifier=Modifier.fillMaxWidth().height(64.dp),shape=RoundedCornerShape(16.dp)) {
                             Text("IMPORTAR DECK",fontSize=15.sp,fontWeight=FontWeight.Bold)
                         }
-                        OutlinedButton(onClick={deck.clear();deckName="Novo Deck";limit=100;activeDeckId=null;tab=2},modifier=Modifier.fillMaxWidth().height(64.dp),shape=RoundedCornerShape(16.dp)) {
+                        OutlinedButton(onClick={deck.clear();deckName="";limit=100;activeDeckId=null;query="";tab=5},modifier=Modifier.fillMaxWidth().height(64.dp),shape=RoundedCornerShape(16.dp)) {
                             Text("CRIAR NOVO DECK",fontSize=15.sp,fontWeight=FontWeight.Bold)
                         }
                         OutlinedButton(onClick={tab=0},modifier=Modifier.fillMaxWidth().height(64.dp),shape=RoundedCornerShape(16.dp)) {
@@ -436,7 +452,7 @@ fun GenesysApp() {
                 1 -> {
                     Row(Modifier.fillMaxWidth().padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
                         Text("DECKS SALVOS",color=Color.White,fontSize=18.sp,fontWeight=FontWeight.ExtraBold,modifier=Modifier.weight(1f))
-                        Button(onClick={deck.clear();deckName="";limit=100;activeDeckId=null;tab=2},colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("NOVO DECK",color=Navy,fontWeight=FontWeight.Bold,fontSize=11.sp) }
+                        Button(onClick={deck.clear();deckName="";limit=100;activeDeckId=null;query="";tab=5},colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("NOVO DECK",color=Navy,fontWeight=FontWeight.Bold,fontSize=11.sp) }
                     }
                     if(savedDecks.isEmpty()) {
                         Text("Nenhum deck salvo ainda. Crie um deck ou importe um código para ele aparecer aqui.",color=Muted,fontSize=13.sp,modifier=Modifier.padding(top=18.dp))
@@ -477,7 +493,36 @@ fun GenesysApp() {
                         }
                     }
                     Text("Novas cartas serão adicionadas em: "+when(section){DeckSection.MAIN->"Main Deck";DeckSection.EXTRA->"Extra Deck";DeckSection.SIDE->"Side Deck"},color=Blue,fontSize=10.sp,modifier=Modifier.padding(bottom=4.dp))
+                    Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(12.dp)).padding(horizontal=10.dp,vertical=3.dp),verticalAlignment=Alignment.CenterVertically) {
+                        Icon(Icons.Default.Search,null,tint=Muted)
+                        Spacer(Modifier.width(8.dp))
+                        BasicTextField(query,{query=it},Modifier.weight(1f).padding(vertical=11.dp),singleLine=true,textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=14.sp),decorationBox={ inner -> if(query.isEmpty()) Text("Pesquise cartas para adicionar...",color=Muted,fontSize=12.sp); inner() })
+                        if(query.isNotEmpty()) TextButton(onClick={query=""}) { Text("LIMPAR",fontSize=9.sp) }
+                    }
                     Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom=10.dp)) {
+                        if(query.isNotBlank()) {
+                            Text("RESULTADOS DA PESQUISA",color=Blue,fontWeight=FontWeight.ExtraBold,fontSize=11.sp,modifier=Modifier.padding(top=10.dp,bottom=5.dp))
+                            if(loading) Text("Carregando catálogo...",color=Muted,fontSize=11.sp)
+                            else if(filtered.isEmpty()) Text("Nenhuma carta encontrada.",color=Muted,fontSize=11.sp,modifier=Modifier.padding(vertical=8.dp))
+                            filtered.take(30).forEach { card ->
+                                Row(Modifier.fillMaxWidth().padding(vertical=3.dp).background(Panel,RoundedCornerShape(10.dp)).padding(7.dp),verticalAlignment=Alignment.CenterVertically) {
+                                    AsyncImage(model=card.image,contentDescription=card.name,modifier=Modifier.width(39.dp).height(56.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(card.name,color=Color.White,fontWeight=FontWeight.Bold,fontSize=11.sp,maxLines=2)
+                                        Text("${card.points ?: 0} pts • ${card.type}",color=Muted,fontSize=9.sp,maxLines=1)
+                                        Text("${deck.count { it.card.id==card.id }}/3 cópias",color=Blue,fontSize=9.sp)
+                                    }
+                                    IconButton(onClick={
+                                        val copies=deck.count { it.card.id==card.id }
+                                        if(copies>=3) message="Limite atingido: máximo de 3 cópias desta carta."
+                                        else { deck.add(DeckCard(card,section));message="${card.name} adicionada ao deck." }
+                                    }) { Icon(Icons.Default.Add,"Adicionar",tint=Blue) }
+                                }
+                            }
+                        } else {
+                            Text("PESQUISE ACIMA PARA ADICIONAR CARTAS",color=Muted,fontSize=10.sp,modifier=Modifier.padding(top=12.dp,bottom=8.dp))
+                        }
                         DeckSection.values().forEach { area ->
                             val areaCards=deck.filter { it.section==area }
                             Row(Modifier.fillMaxWidth().padding(top=6.dp,bottom=4.dp),verticalAlignment=Alignment.CenterVertically) {
@@ -496,7 +541,7 @@ fun GenesysApp() {
                                     ) {
                                         rowCards.forEach { entry ->
                                             Column(
-                                                modifier=Modifier.weight(1f).clickable { deck.remove(entry) },
+                                                modifier=Modifier.weight(1f).clickable { deck.remove(entry); message="${entry.card.name} removida do deck." },
                                                 horizontalAlignment=Alignment.CenterHorizontally
                                             ) {
                                                 Box(Modifier.fillMaxWidth().aspectRatio(0.69f)) {
@@ -520,12 +565,9 @@ fun GenesysApp() {
                                 }
                             }
                         }
-                        Text("Toque em uma carta para removê-la do deck.",color=Muted,fontSize=10.sp,modifier=Modifier.padding(top=8.dp))
+                        Text("Toque em uma carta do deck para removê-la. As alterações aparecem imediatamente.",color=Muted,fontSize=10.sp,modifier=Modifier.padding(top=8.dp))
                     }
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Button(onClick={tab=0},modifier=Modifier.weight(1f),colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("ADICIONAR CARTAS",color=Navy,fontWeight=FontWeight.Bold,fontSize=11.sp) }
-                        OutlinedButton(onClick={saveCurrentDeck()},modifier=Modifier.weight(1f)) { Text("SALVAR DECK",fontSize=11.sp) }
-                    }
+                    Button(onClick={saveCurrentDeck()},modifier=Modifier.fillMaxWidth().height(48.dp),colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("SALVAR DECK",color=Navy,fontWeight=FontWeight.ExtraBold,fontSize=13.sp) }
                     OutlinedButton(onClick={clipboard.setText(AnnotatedString(buildYdke(deck.toList())));message="Código YDKE copiado."},modifier=Modifier.fillMaxWidth()) { Text("EXPORTAR / COPIAR CÓDIGO YDKE",fontSize=11.sp) }
                 }
                 else -> {
