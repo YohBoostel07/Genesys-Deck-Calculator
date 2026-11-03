@@ -237,9 +237,17 @@ fun GenesysApp() {
     val scope= rememberCoroutineScope()
     val total=deck.sumOf { it.card.points ?: 0 }
     val filtered=remember(query,catalogue) {
-        if(query.isBlank()) emptyList() else catalogue.asSequence()
-            .filter { it.name.contains(query.trim(),true) || it.id.toString()==query.trim() }
-            .take(100).toList()
+        if(query.isBlank()) emptyList() else {
+            val searchTerms=query.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+            catalogue.asSequence()
+                .filter { card ->
+                    val cardName=card.name
+                    (cardName.contains(query.trim(),ignoreCase=true) ||
+                        searchTerms.all { term -> cardName.contains(term,ignoreCase=true) }) ||
+                        card.id.toString()==query.trim()
+                }
+                .toList()
+        }
     }
 
     fun loadCatalogue(force:Boolean=false) {
@@ -495,7 +503,7 @@ fun GenesysApp() {
                             } else if(filtered.isEmpty()) {
                                 item { Text("Nenhuma carta encontrada.",color=Muted,fontSize=11.sp) }
                             } else {
-                                items(filtered.take(60),key={it.id}) { card ->
+                                items(filtered,key={it.id}) { card ->
                                     val copies=deck.count { it.card.id==card.id }
                                     Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(10.dp)).padding(7.dp),verticalAlignment=Alignment.CenterVertically) {
                                         AsyncImage(model=card.image,contentDescription=card.name,modifier=Modifier.width(43.dp).height(62.dp).clickable { selectedCard=card })
@@ -514,7 +522,6 @@ fun GenesysApp() {
                             }
                         }
                     } else {
-                        OutlinedTextField(value=deckName,onValueChange={deckName=it},label={Text("Nome do deck")},singleLine=true,modifier=Modifier.fillMaxWidth(),colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,focusedLabelColor=Blue,unfocusedLabelColor=Muted,cursorColor=Blue))
                         Row(Modifier.fillMaxWidth().padding(top=3.dp,bottom=5.dp),verticalAlignment=Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(deckName,color=Color.White,fontSize=13.sp,fontWeight=FontWeight.Bold,maxLines=1)
