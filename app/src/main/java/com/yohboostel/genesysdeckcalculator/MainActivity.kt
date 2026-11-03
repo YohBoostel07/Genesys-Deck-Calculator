@@ -51,6 +51,7 @@ private fun normalizeCardName(value:String):String = Normalizer.normalize(value.
 data class YgoCard(val id:Int,val name:String,val type:String,val image:String,val points:Int?)
 enum class DeckSection { MAIN, EXTRA, SIDE }
 data class DeckCard(val card:YgoCard,val section:DeckSection)
+data class SavedDeck(val id:String,val name:String,val limit:Int,val cards:List<DeckCard>)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -131,6 +132,48 @@ private fun parseDeckCode(raw:String): Map<DeckSection,List<Int>> {
 fun GenesysApp() {
     val context=androidx.compose.ui.platform.LocalContext.current
     val deck= remember { mutableStateListOf<DeckCard>() }
+    val savedDecks= remember {
+        mutableStateListOf<SavedDeck>().apply {
+            val raw=context.getSharedPreferences("genesys_decks",0).getString("saved_decks","[]") ?: "[]"
+            try {
+                val array=org.json.JSONArray(raw)
+                for(i in 0 until array.length()) {
+                    val item=array.getJSONObject(i)
+                    val cardsJson=item.optJSONArray("cards") ?: org.json.JSONArray()
+                    val cards=buildList {
+                        for(j in 0 until cardsJson.length()) {
+                            val card=cardsJson.getJSONObject(j)
+                            add(DeckCard(YgoCard(card.optInt("id"),card.optString("name"),card.optString("type"),card.optString("image"),if(card.isNull("points")) null else card.optInt("points")),DeckSection.valueOf(card.optString("section","MAIN"))))
+                        }
+                    }
+                    add(SavedDeck(item.optString("id"),item.optString("name"),item.optInt("limit",100),cards))
+                }
+            } catch(_:Exception) { }
+        }
+    }
+    var activeDeckId by remember { mutableStateOf<String?>(null) }
+    fun persistSavedDecks() {
+        val array=org.json.JSONArray()
+        savedDecks.forEach { saved ->
+            val cardsJson=org.json.JSONArray()
+            saved.cards.forEach { entry ->
+                cardsJson.put(JSONObject().put("id",entry.card.id).put("name",entry.card.name).put("type",entry.card.type).put("image",entry.card.image).put("points",entry.card.points ?: JSONObject.NULL).put("section",entry.section.name))
+            }
+            array.put(JSONObject().put("id",saved.id).put("name",saved.name).put("limit",saved.limit).put("cards",cardsJson))
+        }
+        context.getSharedPreferences("genesys_decks",0).edit().putString("saved_decks",array.toString()).apply()
+    }
+    fun saveCurrentDeck() {
+        if(deck.isEmpty()) { message="Adicione cartas antes de salvar o deck."; return }
+        if(deckName.isBlank()) { message="Digite um nome para o deck."; return }
+        val id=activeDeckId ?: System.currentTimeMillis().toString()
+        val saved=SavedDeck(id,deckName.trim(),limit,deck.toList())
+        val index=savedDecks.indexOfFirst { it.id==id }
+        if(index>=0) savedDecks[index]=saved else savedDecks.add(saved)
+        activeDeckId=id
+        persistSavedDecks()
+        message="Deck salvo: ${saved.name}"
+    }
     var catalogue by remember { mutableStateOf<List<YgoCard>>(emptyList()) }
     var query by remember { mutableStateOf("") }
     var importText by remember { mutableStateOf("") }
@@ -269,9 +312,13 @@ fun GenesysApp() {
                 val missing=allIds.size-imported.size
                 deck.clear()
                 deck.addAll(imported)
-                tab=1
+                val id=System.currentTimeMillis().toString()
+                activeDeckId=id
+                savedDecks.add(SavedDeck(id,deckName.ifBlank { "Meu Deck" }.trim(),limit,imported))
+                persistSavedDecks()
+                tab=3
                 importText=""
-                message=if(missing>0) "Deck importado. $missing código(s) não foram encontrados no catálogo." else "Deck importado com sucesso: ${imported.size} cartas."
+                message=if(missing>0) "Deck importado e salvo. $missing código(s) não foram encontrados no catálogo." else "Deck importado e salvo: ${imported.size} cartas."
             } catch(e:Exception) { message=e.message ?: "Não foi possível importar o deck." }
             finally { importLoading=false }
         }
@@ -281,7 +328,7 @@ fun GenesysApp() {
 
     MaterialTheme(colorScheme=darkColorScheme(primary=Blue,background=Navy,surface=Panel,onBackground=Color.White,onSurface=Color.White)) {
         Column(Modifier.fillMaxSize().background(Navy).padding(horizontal=16.dp)) {
-            if(tab!=1) {
+            if(tab!=3) {
                 Spacer(Modifier.height(22.dp))
                 Text("GENESYS",color=Blue,fontSize=12.sp,fontWeight=FontWeight.Bold,letterSpacing=3.sp)
                 Text("Deck Calculator",color=Color.White,fontSize=28.sp,fontWeight=FontWeight.ExtraBold)
@@ -291,14 +338,14 @@ fun GenesysApp() {
                 Spacer(Modifier.height(5.dp))
             }
             Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).padding(5.dp)) {
-                listOf("Cartas","Meu deck","Adicionar deck").forEachIndexed { index,label ->
+                listOf("Cartas","Decks","Editor","Importar").forEachIndexed { index,label ->
                     Box(Modifier.weight(1f).background(if(tab==index) Blue.copy(alpha=.20f) else Color.Transparent,RoundedCornerShape(10.dp)).clickable { tab=index }.padding(vertical=7.dp,horizontal=3.dp),contentAlignment=Alignment.Center) {
                         Text(label,color=if(tab==index) Blue else Muted,fontWeight=FontWeight.Bold,fontSize=11.sp)
                     }
                 }
             }
             Spacer(Modifier.height(if(tab==1) 4.dp else 12.dp))
-            if(message.isNotEmpty() && tab!=1) Text(message,color=if(message.contains("não") || message.contains("Falha") || message.contains("Erro")) Color(0xFFFFA0A0) else Color(0xFF79D9AD),fontSize=12.sp,modifier=Modifier.padding(vertical=4.dp))
+            if(message.isNotEmpty() && tab!=3) Text(message,color=if(message.contains("não") || message.contains("Falha") || message.contains("Erro")) Color(0xFFFFA0A0) else Color(0xFF79D9AD),fontSize=12.sp,modifier=Modifier.padding(vertical=4.dp))
             when(tab) {
                 0 -> {
                     Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).padding(horizontal=12.dp,vertical=5.dp),verticalAlignment=Alignment.CenterVertically) {
@@ -331,6 +378,29 @@ fun GenesysApp() {
                     }
                 }
                 1 -> {
+                    Row(Modifier.fillMaxWidth().padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
+                        Text("DECKS SALVOS",color=Color.White,fontSize=18.sp,fontWeight=FontWeight.ExtraBold,modifier=Modifier.weight(1f))
+                        Button(onClick={deck.clear();deckName="";limit=100;activeDeckId=null;tab=3},colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("NOVO DECK",color=Navy,fontWeight=FontWeight.Bold,fontSize=11.sp) }
+                    }
+                    if(savedDecks.isEmpty()) {
+                        Text("Nenhum deck salvo ainda. Crie um deck ou importe um código para ele aparecer aqui.",color=Muted,fontSize=13.sp,modifier=Modifier.padding(top=18.dp))
+                    } else {
+                        LazyColumn(verticalArrangement=Arrangement.spacedBy(9.dp),contentPadding=PaddingValues(bottom=16.dp)) {
+                            items(savedDecks,key={it.id}) { saved ->
+                                Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(13.dp)).clickable {
+                                    deck.clear();deck.addAll(saved.cards);deckName=saved.name;limit=saved.limit;activeDeckId=saved.id;tab=3
+                                }.padding(12.dp),verticalAlignment=Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(saved.name,color=Color.White,fontWeight=FontWeight.Bold,fontSize=15.sp)
+                                        Text("${saved.cards.size} cartas • ${saved.cards.sumOf { it.card.points ?: 0 }} / ${saved.limit} pts",color=Muted,fontSize=11.sp)
+                                    }
+                                    TextButton(onClick={savedDecks.remove(saved);persistSavedDecks()}) { Text("EXCLUIR",color=Color(0xFFFF8888),fontSize=10.sp) }
+                                }
+                            }
+                        }
+                    }
+                }
+                2 -> {
                     Row(Modifier.fillMaxWidth().padding(top=3.dp,bottom=5.dp),verticalAlignment=Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(deckName,color=Color.White,fontSize=13.sp,fontWeight=FontWeight.Bold,maxLines=1)
@@ -386,8 +456,8 @@ fun GenesysApp() {
                         Text("Toque em uma carta para removê-la do deck.",color=Muted,fontSize=10.sp,modifier=Modifier.padding(top=8.dp))
                     }
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Button(onClick={tab=2},modifier=Modifier.weight(1f),colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("ADICIONAR DECK",color=Navy,fontWeight=FontWeight.Bold,fontSize=11.sp) }
-                        OutlinedButton(onClick={deck.clear()},modifier=Modifier.weight(1f)) { Text("LIMPAR",fontSize=11.sp) }
+                        Button(onClick={tab=0},modifier=Modifier.weight(1f),colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("ADICIONAR CARTAS",color=Navy,fontWeight=FontWeight.Bold,fontSize=11.sp) }
+                        OutlinedButton(onClick={saveCurrentDeck()},modifier=Modifier.weight(1f)) { Text("SALVAR DECK",fontSize=11.sp) }
                     }
                 }
                 else -> {
@@ -400,7 +470,7 @@ fun GenesysApp() {
                     Button(onClick={importDeck()},enabled=!importLoading && catalogue.isNotEmpty(),modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=Blue)) {
                         Text(if(importLoading) "IMPORTANDO..." else "IMPORTAR DECK",color=Navy,fontWeight=FontWeight.Bold)
                     }
-                    TextButton(onClick={tab=1},modifier=Modifier.align(Alignment.CenterHorizontally)) { Text("Voltar ao deck",color=Muted) }
+                    TextButton(onClick={tab=1},modifier=Modifier.align(Alignment.CenterHorizontally)) { Text("Voltar aos decks",color=Muted) }
                 }
             }
             Spacer(Modifier.height(8.dp))
