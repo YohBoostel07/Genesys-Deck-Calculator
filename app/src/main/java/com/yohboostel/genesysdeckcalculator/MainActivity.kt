@@ -7,6 +7,9 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -339,19 +342,42 @@ fun GenesysApp() {
                             FilterChip(selected=section==area,onClick={section=area},label={Text(when(area){DeckSection.MAIN->"Main";DeckSection.EXTRA->"Extra";DeckSection.SIDE->"Side"})})
                         }
                     }
-                    LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(7.dp),contentPadding=PaddingValues(bottom=10.dp)) {
-                        items(deck.toList().filter { it.section==section }.mapIndexed { index, entry -> index to entry },key={ it.first }) { indexedEntry ->
-                            val entry=indexedEntry.second
-                            Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(12.dp)).padding(8.dp),verticalAlignment=Alignment.CenterVertically) {
-                                AsyncImage(model=entry.card.image,contentDescription=entry.card.name,modifier=Modifier.width(44.dp).height(62.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(entry.card.name,fontWeight=FontWeight.Bold,fontSize=12.sp)
-                                    Text((entry.card.points?.toString() ?: "—")+" pts • "+entry.section.name,color=Blue,fontSize=11.sp)
+                    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom=10.dp)) {
+                        DeckSection.values().forEach { area ->
+                            val areaCards=deck.filter { it.section==area }
+                            Row(Modifier.fillMaxWidth().padding(top=12.dp,bottom=8.dp),verticalAlignment=Alignment.CenterVertically) {
+                                Text(when(area) { DeckSection.MAIN -> "DECK PRINCIPAL"; DeckSection.EXTRA -> "DECK ADICIONAL"; DeckSection.SIDE -> "DECK AUXILIAR" },color=Blue,fontWeight=FontWeight.ExtraBold,fontSize=13.sp,letterSpacing=1.sp)
+                                Spacer(Modifier.weight(1f))
+                                Text("${areaCards.size} cartas",color=Muted,fontSize=11.sp)
+                            }
+                            HorizontalDivider(color=Blue.copy(alpha=.35f),thickness=1.dp)
+                            if(areaCards.isEmpty()) {
+                                Text("Nenhuma carta nesta seção",color=Muted,fontSize=11.sp,modifier=Modifier.padding(vertical=14.dp))
+                            } else {
+                                FlowRow(
+                                    modifier=Modifier.fillMaxWidth().padding(top=10.dp,bottom=8.dp),
+                                    maxItemsInEachRow=5,
+                                    horizontalArrangement=Arrangement.spacedBy(7.dp),
+                                    verticalArrangement=Arrangement.spacedBy(12.dp)
+                                ) {
+                                    areaCards.forEach { entry ->
+                                        Column(
+                                            modifier=Modifier.width(62.dp).clickable { deck.remove(entry) },
+                                            horizontalAlignment=Alignment.CenterHorizontally
+                                        ) {
+                                            AsyncImage(
+                                                model=entry.card.image,
+                                                contentDescription="Remover ${entry.card.name} do deck",
+                                                modifier=Modifier.width(60.dp).height(87.dp)
+                                            )
+                                            Text(entry.card.name,color=Color.White,fontSize=8.sp,lineHeight=9.sp,maxLines=2,minLines=2,fontWeight=FontWeight.Medium)
+                                            Text("${entry.card.points ?: 0} pts",color=Blue,fontSize=8.sp,fontWeight=FontWeight.Bold)
+                                        }
+                                    }
                                 }
-                                IconButton(onClick={deck.remove(entry)}) { Icon(Icons.Default.Remove,null,tint=Muted) }
                             }
                         }
+                        Text("Toque em uma carta para removê-la do deck.",color=Muted,fontSize=10.sp,modifier=Modifier.padding(top=8.dp))
                     }
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         Button(onClick={tab=2},modifier=Modifier.weight(1f),colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("ADICIONAR DECK",color=Navy,fontWeight=FontWeight.Bold,fontSize=11.sp) }
