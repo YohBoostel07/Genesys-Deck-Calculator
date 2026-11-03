@@ -57,7 +57,7 @@ private val Muted = Color(0xFF9BAEC5)
 private const val OFFICIAL_GENESYS_URL = "https://www.yugioh-card.com/en/genesys/"
 private fun normalizeCardName(value:String):String = Normalizer.normalize(value.lowercase(Locale.ROOT),Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"),"").replace(Regex("[^a-z0-9]"),"")
 
-data class YgoCard(val id:Int,val name:String,val type:String,val image:String,val points:Int?,val desc:String="",val attribute:String="")
+data class YgoCard(val id:Int,val name:String,val type:String,val image:String,val points:Int?,val desc:String="")
 enum class DeckSection { MAIN, EXTRA, SIDE }
 data class DeckCard(val card:YgoCard,val section:DeckSection)
 data class SavedDeck(val id:String,val name:String,val limit:Int,val cards:List<DeckCard>)
@@ -81,7 +81,7 @@ private fun parseCard(obj: JSONObject): YgoCard {
         is String -> raw.toIntOrNull()
         else -> null
     }
-    return YgoCard(obj.optInt("id"),obj.optString("name"),obj.optString("type"),image,points,obj.optString("desc"),obj.optString("attribute"))
+    return YgoCard(obj.optInt("id"),obj.optString("name"),obj.optString("type"),image,points,obj.optString("desc"))
 }
 
 private fun encodeYdkePart(ids:List<Int>):String {
@@ -159,11 +159,6 @@ fun GenesysApp() {
     val deck= remember { mutableStateListOf<DeckCard>() }
     var catalogue by remember { mutableStateOf<List<YgoCard>>(emptyList()) }
     var query by remember { mutableStateOf("") }
-    var typeFilter by remember { mutableStateOf("Todos") }
-    var attributeFilter by remember { mutableStateOf("Todos") }
-    var minPointFilter by remember { mutableStateOf("") }
-    var maxPointFilter by remember { mutableStateOf("") }
-    var showAdvancedFilters by remember { mutableStateOf(false) }
     var importText by remember { mutableStateOf("") }
     var deckName by remember { mutableStateOf("Meu Deck") }
     var loading by remember { mutableStateOf(false) }
@@ -185,7 +180,7 @@ fun GenesysApp() {
                     val cards=buildList {
                         for(j in 0 until cardsJson.length()) {
                             val card=cardsJson.getJSONObject(j)
-                            add(DeckCard(YgoCard(card.optInt("id"),card.optString("name"),card.optString("type"),card.optString("image"),if(card.isNull("points")) null else card.optInt("points"),card.optString("desc"),card.optString("attribute")),DeckSection.valueOf(card.optString("section","MAIN"))))
+                            add(DeckCard(YgoCard(card.optInt("id"),card.optString("name"),card.optString("type"),card.optString("image"),if(card.isNull("points")) null else card.optInt("points"),card.optString("desc")),DeckSection.valueOf(card.optString("section","MAIN"))))
                         }
                     }
                     add(SavedDeck(item.optString("id"),item.optString("name"),item.optInt("limit",100),cards))
@@ -201,7 +196,7 @@ fun GenesysApp() {
         savedDecks.forEach { saved ->
             val cardsJson=org.json.JSONArray()
             saved.cards.forEach { entry ->
-                cardsJson.put(JSONObject().put("id",entry.card.id).put("name",entry.card.name).put("type",entry.card.type).put("image",entry.card.image).put("points",entry.card.points ?: JSONObject.NULL).put("desc",entry.card.desc).put("attribute",entry.card.attribute).put("section",entry.section.name))
+                cardsJson.put(JSONObject().put("id",entry.card.id).put("name",entry.card.name).put("type",entry.card.type).put("image",entry.card.image).put("points",entry.card.points ?: JSONObject.NULL).put("desc",entry.card.desc).put("section",entry.section.name))
             }
             array.put(JSONObject().put("id",saved.id).put("name",saved.name).put("limit",saved.limit).put("cards",cardsJson))
         }
@@ -239,13 +234,9 @@ fun GenesysApp() {
     }
     val scope= rememberCoroutineScope()
     val total=deck.sumOf { it.card.points ?: 0 }
-    val filtered=remember(query,catalogue,typeFilter,attributeFilter,minPointFilter,maxPointFilter) {
-        if(query.isBlank() && typeFilter=="Todos" && attributeFilter=="Todos" && minPointFilter.isBlank() && maxPointFilter.isBlank()) emptyList() else catalogue.asSequence()
-            .filter { query.isBlank() || it.name.contains(query.trim(),true) || it.id.toString()==query.trim() }
-            .filter { typeFilter=="Todos" || when(typeFilter) { "Monstro" -> it.type.contains("monster",true); "Magia" -> it.type.contains("spell",true); "Armadilha" -> it.type.contains("trap",true); else -> it.type.contains(typeFilter,true) } }
-            .filter { attributeFilter=="Todos" || it.attribute.equals(attributeFilter,true) }
-            .filter { minPointFilter.toIntOrNull()?.let { min -> (it.points ?: 0)>=min } ?: true }
-            .filter { maxPointFilter.toIntOrNull()?.let { max -> (it.points ?: 0)<=max } ?: true }
+    val filtered=remember(query,catalogue) {
+        if(query.isBlank()) emptyList() else catalogue.asSequence()
+            .filter { it.name.contains(query.trim(),true) || it.id.toString()==query.trim() }
             .take(100).toList()
     }
 
@@ -515,31 +506,11 @@ fun GenesysApp() {
                             Text(deckName,color=Color.White,fontSize=13.sp,fontWeight=FontWeight.Bold,maxLines=1)
                             Text("PONTUAÇÃO DO DECK",color=Muted,fontSize=9.sp,fontWeight=FontWeight.Bold)
                             Text("$total / $limit",color=if(total>limit) Color(0xFFFF7474) else Blue,fontSize=25.sp,fontWeight=FontWeight.ExtraBold)
-                            LinearProgressIndicator(progress={if(limit>0) (total.toFloat()/limit).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth().padding(top=4.dp),color=if(total>limit) Color(0xFFFF7474) else Blue,trackColor=Panel)
                         }
                         Column(horizontalAlignment=Alignment.End) {
                             Text("${deck.size} cartas",color=Color.White,fontWeight=FontWeight.Bold,fontSize=13.sp)
                             Text("Limite: $limit pts",color=Muted,fontSize=10.sp)
                         }
-                    }
-                    Row(Modifier.fillMaxWidth().padding(vertical=5.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                        listOf(DeckSection.MAIN to "MAIN",DeckSection.EXTRA to "EXTRA",DeckSection.SIDE to "SIDE").forEach { (area,label) ->
-                            val count=deck.count { it.section==area }
-                            Column(Modifier.weight(1f).background(Panel,RoundedCornerShape(10.dp)).clickable { section=area }.padding(8.dp)) {
-                                Text(label,color=if(section==area) Blue else Muted,fontSize=9.sp,fontWeight=FontWeight.ExtraBold)
-                                Text("$count",color=Color.White,fontSize=19.sp,fontWeight=FontWeight.ExtraBold)
-                                Text("cartas",color=Muted,fontSize=9.sp)
-                            }
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(10.dp)).padding(9.dp),horizontalArrangement=Arrangement.SpaceBetween) {
-                        val monsters=deck.count { it.card.type.contains("monster",true) }
-                        val spells=deck.count { it.card.type.contains("spell",true) }
-                        val traps=deck.count { it.card.type.contains("trap",true) }
-                        Column { Text("MONSTROS",color=Muted,fontSize=8.sp); Text("$monsters",color=Color.White,fontWeight=FontWeight.Bold) }
-                        Column { Text("MAGIAS",color=Muted,fontSize=8.sp); Text("$spells",color=Color.White,fontWeight=FontWeight.Bold) }
-                        Column { Text("ARMADILHAS",color=Muted,fontSize=8.sp); Text("$traps",color=Color.White,fontWeight=FontWeight.Bold) }
-                        Column { Text("LIVRES",color=Muted,fontSize=8.sp); Text("${limit-total}",color=if(total>limit) Color(0xFFFF7474) else Blue,fontWeight=FontWeight.Bold) }
                     }
                     Row(Modifier.fillMaxWidth().padding(top=5.dp,bottom=5.dp),verticalAlignment=Alignment.CenterVertically) {
                         Text("SEÇÕES DO DECK",color=Muted,fontSize=10.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
@@ -564,36 +535,8 @@ fun GenesysApp() {
                         BasicTextField(query,{query=it},Modifier.weight(1f).padding(vertical=11.dp),singleLine=true,textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=14.sp),decorationBox={ inner -> if(query.isEmpty()) Text("Pesquise cartas para adicionar...",color=Muted,fontSize=12.sp); inner() })
                         if(query.isNotEmpty()) TextButton(onClick={query=""}) { Text("LIMPAR",fontSize=9.sp) }
                     }
-                    if(editingDeck) {
-                        TextButton(onClick={showAdvancedFilters=!showAdvancedFilters},modifier=Modifier.align(Alignment.End)) { Text(if(showAdvancedFilters) "OCULTAR FILTROS ▲" else "FILTROS AVANÇADOS ▼",color=Blue,fontSize=10.sp) }
-                        if(showAdvancedFilters) {
-                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("Tipo",color=Muted,fontSize=9.sp)
-                                    var expandedType by remember { mutableStateOf(false) }
-                                    Box {
-                                        OutlinedButton(onClick={expandedType=true},modifier=Modifier.fillMaxWidth()) { Text(typeFilter,fontSize=10.sp,color=Color.White) }
-                                        DropdownMenu(expanded=expandedType,onDismissRequest={expandedType=false}) { listOf("Todos","Monstro","Magia","Armadilha").forEach { option -> DropdownMenuItem(text={Text(option)},onClick={typeFilter=option;expandedType=false}) } }
-                                    }
-                                }
-                                Column(Modifier.weight(1f)) {
-                                    Text("Atributo",color=Muted,fontSize=9.sp)
-                                    var expandedAttribute by remember { mutableStateOf(false) }
-                                    Box {
-                                        OutlinedButton(onClick={expandedAttribute=true},modifier=Modifier.fillMaxWidth()) { Text(attributeFilter,fontSize=10.sp,color=Color.White) }
-                                        DropdownMenu(expanded=expandedAttribute,onDismissRequest={expandedAttribute=false}) { listOf("Todos","DARK","LIGHT","EARTH","WATER","FIRE","WIND","DIVINE").forEach { option -> DropdownMenuItem(text={Text(option)},onClick={attributeFilter=option;expandedAttribute=false}) } }
-                                    }
-                                }
-                            }
-                            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(value=minPointFilter,onValueChange={minPointFilter=it.filter(Char::isDigit)},label={Text("Pontos mín.")},modifier=Modifier.weight(1f),singleLine=true)
-                                OutlinedTextField(value=maxPointFilter,onValueChange={maxPointFilter=it.filter(Char::isDigit)},label={Text("Pontos máx.")},modifier=Modifier.weight(1f),singleLine=true)
-                            }
-                            TextButton(onClick={typeFilter="Todos";attributeFilter="Todos";minPointFilter="";maxPointFilter="";query=""}) { Text("LIMPAR TODOS OS FILTROS",color=Muted,fontSize=9.sp) }
-                        }
-                    }
                     Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom=10.dp)) {
-                        if(editingDeck && (query.isNotBlank() || typeFilter!="Todos" || attributeFilter!="Todos" || minPointFilter.isNotBlank() || maxPointFilter.isNotBlank())) {
+                        if(editingDeck && query.isNotBlank()) {
                             Text("RESULTADOS DA PESQUISA",color=Blue,fontWeight=FontWeight.ExtraBold,fontSize=11.sp,modifier=Modifier.padding(top=10.dp,bottom=5.dp))
                             if(loading) Text("Carregando catálogo...",color=Muted,fontSize=11.sp)
                             else if(filtered.isEmpty()) Text("Nenhuma carta encontrada.",color=Muted,fontSize=11.sp,modifier=Modifier.padding(vertical=8.dp))
