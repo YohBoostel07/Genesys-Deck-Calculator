@@ -23,6 +23,34 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Prepare app launcher icon from uploaded PNG
+        run: |
+          python -m pip install --quiet Pillow
+          python - <<'PY'
+          from PIL import Image, ImageOps
+          from pathlib import Path
+
+          source = Path("assets/genesys-icon.png")
+          if not source.is_file():
+              raise SystemExit("Icon file not found: assets/genesys-icon.png")
+
+          with Image.open(source) as original:
+              image = ImageOps.fit(
+                  original.convert("RGB"),
+                  (1024, 1024),
+                  method=Image.Resampling.LANCZOS,
+                  centering=(0.5, 0.5)
+              )
+
+          targets = [
+              Path("app/src/main/res/drawable-nodpi/ic_launcher_art.jpg"),
+              Path("app/src/main/res/mipmap-nodpi/ic_launcher.jpg"),
+          ]
+          for target in targets:
+              target.parent.mkdir(parents=True, exist_ok=True)
+              image.save(target, format="JPEG", quality=96, optimize=True)
+              print(f"Prepared launcher icon: {target}")
+          PY
       - name: Build debug APK
         run: gradle assembleDebug
       - name: Upload APK
