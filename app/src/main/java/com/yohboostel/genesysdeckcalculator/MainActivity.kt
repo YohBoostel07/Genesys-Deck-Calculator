@@ -171,7 +171,9 @@ fun GenesysApp() {
                         val byId=linkedMapOf<Int,JSONObject>()
                         for(i in 0 until allData.length()) {
                             val obj=allData.getJSONObject(i)
-                            byId[obj.optInt("id")]=JSONObject(obj.toString())
+                            val saved=JSONObject(obj.toString())
+                            saved.put("name_en",obj.optString("name"))
+                            byId[obj.optInt("id")]=saved
                         }
                         val portuguese=JSONObject(fetchText("https://db.ygoprodeck.com/api/v7/cardinfo.php?language=pt")).optJSONArray("data")
                         if(portuguese!=null) for(i in 0 until portuguese.length()) {
@@ -183,6 +185,19 @@ fun GenesysApp() {
                         root=JSONObject().put("data",org.json.JSONArray().apply { byId.values.forEach { put(it) } })
                     }
                     val cardArray=root.optJSONArray("data") ?: throw Exception("O cache do catálogo está inválido.")
+                    if((0 until cardArray.length()).any { !cardArray.getJSONObject(it).has("name_en") }) {
+                        val englishData=JSONObject(fetchText("https://db.ygoprodeck.com/api/v7/cardinfo.php")).optJSONArray("data")
+                            ?: throw Exception("Não foi possível atualizar os nomes originais das cartas.")
+                        val englishNames=HashMap<Int,String>()
+                        for(i in 0 until englishData.length()) {
+                            val item=englishData.getJSONObject(i)
+                            englishNames[item.optInt("id")]=item.optString("name")
+                        }
+                        for(i in 0 until cardArray.length()) {
+                            val item=cardArray.getJSONObject(i)
+                            englishNames[item.optInt("id")]?.let { item.put("name_en",it) }
+                        }
+                    }
                     var officialCount=0
                     var officialSync=true
                     try {
@@ -199,8 +214,9 @@ fun GenesysApp() {
                         require(officialPoints.size>=100) { "A tabela oficial da Konami não foi lida integralmente." }
                         for(i in 0 until cardArray.length()) {
                             val card=cardArray.getJSONObject(i)
-                            card.remove("genesys_points")
-                            officialPoints[normalizeCardName(card.optString("name"))]?.let { points ->
+                            card.put("genesys_points",0)
+                            val officialName=card.optString("name_en",card.optString("name"))
+                            officialPoints[normalizeCardName(officialName)]?.let { points ->
                                 card.put("genesys_points",points)
                                 officialCount++
                             }
@@ -224,7 +240,7 @@ fun GenesysApp() {
                     updatedById[current.card.id]?.let { deck[index]=current.copy(card=it) }
                 }
                 message=when {
-                    result.third -> "Pontuação oficial da Konami sincronizada: ${result.second} cartas atualizadas."
+                    result.third -> "Pontuação oficial da Konami sincronizada: ${result.second} cartas com pontos definidos."
                     result.second>0 -> "Sem conexão com a Konami. Mantida a última pontuação oficial salva."
                     else -> "Catálogo carregado, mas não foi possível verificar a lista oficial de pontos. Tente atualizar novamente."
                 }
