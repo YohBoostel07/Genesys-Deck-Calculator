@@ -1,6 +1,7 @@
 package com.yohboostel.genesysdeckcalculator
 
 import android.os.Bundle
+import android.util.Base64
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -12,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
@@ -29,6 +31,8 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.net.URLEncoder
 
 private val Navy = Color(0xFF07111F)
@@ -36,7 +40,9 @@ private val Panel = Color(0xFF111F32)
 private val Blue = Color(0xFF38A5FF)
 private val Muted = Color(0xFF9BAEC5)
 
-data class YgoCard(val id:Int,val name:String,val type:String,val image:String,val points:Int)
+data class YgoCard(val id:Int,val name:String,val type:String,val image:String,val points:Int?)
+enum class DeckSection { MAIN, EXTRA, SIDE }
+data class DeckCard(val card:YgoCard,val section:DeckSection)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,130 +51,234 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private fun parseCard(obj: JSONObject): YgoCard {
+    val images=obj.optJSONArray("card_images")
+    val image=if(images!=null && images.length()>0) images.getJSONObject(0).optString("image_url_small") else ""
+    val raw=obj.opt("genesys_points")
+    val points=when(raw) {
+        is Number -> raw.toInt()
+        is String -> raw.toIntOrNull()
+        else -> null
+    }
+    return YgoCard(obj.optInt("id"),obj.optString("name"),obj.optString("type"),image,points)
+}
+
+private fun decodeYdkePart(part:String): List<Int> {
+    if(part.isBlank()) return emptyList()
+    val bytes=try { Base64.decode(part,Base64.DEFAULT) } catch(_:Exception) { return emptyList() }
+    val ids= mutableListOf<Int>()
+    var offset=0
+    while(offset+4<=bytes.size) {
+        val id=ByteBuffer.wrap(bytes,offset,4).order(ByteOrder.LITTLE_ENDIAN).int
+        if(id>0) ids.add(id)
+        offset+=4
+    }
+    return ids
+}
+
+private fun parseDeckCode(raw:String): Map<DeckSection,List<Int>> {
+    val text=raw.trim()
+    if(text.startsWith("ydke://",true)) {
+        val parts=text.removePrefix("ydke://").split("!")
+        require(parts.size>=3) { "Código YDKE incompleto. Ele precisa ter Main, Extra e Side." }
+        return mapOf(
+            DeckSection.MAIN to decodeYdkePart(parts[0]),
+            DeckSection.EXTRA to decodeYdkePart(parts[1]),
+            DeckSection.SIDE to decodeYdkePart(parts[2])
+        )
+    }
+    var section=DeckSection.MAIN
+    val parsed=mutableMapOf(
+        DeckSection.MAIN to mutableListOf<Int>(),
+        DeckSection.EXTRA to mutableListOf<Int>(),
+        DeckSection.SIDE to mutableListOf<Int>()
+    )
+    var foundMarker=false
+    text.lines().forEach { original ->
+        val line=original.trim()
+        when(line.lowercase()) {
+            "#main" -> { section=DeckSection.MAIN; foundMarker=true }
+            "#extra" -> { section=DeckSection.EXTRA; foundMarker=true }
+            "!side" -> { section=DeckSection.SIDE; foundMarker=true }
+            else -> {
+                if(line.isNotEmpty() && !line.startsWith("#") && !line.startsWith("!")) {
+                    line.toIntOrNull()?.takeIf { it>0 }?.let { parsed.getValue(section).add(it) }
+                }
+            }
+        }
+    }
+    require(foundMarker && parsed.values.any { it.isNotEmpty() }) {
+        "Formato não reconhecido. Cole o código YDKE (ydke://...) ou o conteúdo de um arquivo .ydk."
+    }
+    return parsed
+}
+
 @Composable
 fun GenesysApp() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val deck = remember { mutableStateListOf<YgoCard>() }
+    val context=androidx.compose.ui.platform.LocalContext.current
+    val deck= remember { mutableStateListOf<DeckCard>() }
+    var catalogue by remember { mutableStateOf<List<YgoCard>>(emptyList()) }
     var query by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<YgoCard>>(emptyList()) }
-    var loading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf("") }
-    var tab by remember { mutableIntStateOf(0) }
+    var importText by remember { mutableStateOf("") }
     var deckName by remember { mutableStateOf("Meu Deck") }
-    val scope = rememberCoroutineScope()
-    val total = deck.sumOf { it.points }
+    var loading by remember { mutableStateOf(false) }
+    var importLoading by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf("") }
+    var tab by remember { mutableIntStateOf(0) }
+    var section by remember { mutableStateOf(DeckSection.MAIN) }
+    var limit by remember { mutableIntStateOf(100) }
+    val scope= rememberCoroutineScope()
+    val total=deck.sumOf { it.card.points ?: 0 }
+    val filtered=remember(query,catalogue) {
+        if(query.isBlank()) emptyList() else catalogue.asSequence()
+            .filter { it.name.contains(query.trim(),true) || it.id.toString()==query.trim() }
+            .take(100).toList()
+    }
 
-    fun search() {
-        if (query.isBlank()) return
-        loading = true
-        error = ""
+    fun loadCatalogue(force:Boolean=false) {
+        if(loading || (catalogue.isNotEmpty() && !force)) return
+        loading=true
+        message=""
         scope.launch {
             try {
-                results = withContext(Dispatchers.IO) {
-                    val encoded = URLEncoder.encode(query.trim(), "UTF-8")
-                    val url = "https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=$encoded&format=genesys&language=pt&num=30&offset=0"
-                    val request = Request.Builder().url(url).build()
-                    OkHttpClient().newCall(request).execute().use { response ->
-                        if (!response.isSuccessful) throw Exception("Erro ao consultar banco de cartas: " + response.code)
-                        val root = JSONObject(response.body?.string() ?: "{}")
-                        val array = root.optJSONArray("data") ?: return@withContext emptyList()
-                        buildList {
-                            for (i in 0 until array.length()) {
-                                val obj = array.getJSONObject(i)
-                                val type = obj.optString("type")
-                                if (type.contains("Link", true) || type.contains("Pendulum", true)) continue
-                                val images = obj.optJSONArray("card_images")
-                                val image = if (images != null && images.length() > 0) images.getJSONObject(0).optString("image_url_small") else ""
-                                add(YgoCard(obj.optInt("id"),obj.optString("name"),type,image,obj.optString("genesys_points").toIntOrNull() ?: 0))
-                            }
-                        }
+                val cards=withContext(Dispatchers.IO) {
+                    val cache=context.getFileStreamPath("genesys_cards_pt.json")
+                    val cached=if(!force && cache.exists()) cache.readText() else null
+                    val json=cached ?: run {
+                        val url="https://db.ygoprodeck.com/api/v7/cardinfo.php?format=genesys&language=pt"
+                        val request=Request.Builder().url(url).build()
+                        OkHttpClient().newCall(request).execute().use { response ->
+                            if(!response.isSuccessful) throw Exception("Falha ao baixar catálogo: HTTP "+response.code)
+                            response.body?.string() ?: throw Exception("Resposta vazia do catálogo.")
+                        }.also { context.openFileOutput("genesys_cards_pt.json",0).bufferedWriter().use { writer -> writer.write(it) } }
                     }
+                    val array=JSONObject(json).optJSONArray("data") ?: throw Exception("O catálogo retornou um formato inesperado.")
+                    buildList { for(i in 0 until array.length()) add(parseCard(array.getJSONObject(i))) }
                 }
-                if (results.isEmpty()) error = "Nenhuma carta encontrada. Tente outro nome."
-            } catch (e: Exception) { error = e.message ?: "Falha na pesquisa." }
-            finally { loading = false }
+                catalogue=cards
+                message="Catálogo carregado: ${cards.size} cartas."
+            } catch(e:Exception) { message=e.message ?: "Não foi possível carregar o catálogo." }
+            finally { loading=false }
         }
     }
 
+    fun importDeck() {
+        if(importText.isBlank()) { message="Cole o código do deck primeiro."; return }
+        importLoading=true
+        message=""
+        scope.launch {
+            try {
+                val ids=parseDeckCode(importText)
+                val imported=withContext(Dispatchers.Default) {
+                    val byId=catalogue.associateBy { it.id }
+                    ids.flatMap { (area,cardIds) -> cardIds.mapNotNull { id -> byId[id]?.let { DeckCard(it,area) } } }
+                }
+                val allIds=ids.values.flatten()
+                val missing=allIds.size-imported.size
+                deck.clear()
+                deck.addAll(imported)
+                tab=1
+                importText=""
+                message=if(missing>0) "Deck importado. $missing código(s) não foram encontrados no catálogo." else "Deck importado com sucesso: ${imported.size} cartas."
+            } catch(e:Exception) { message=e.message ?: "Não foi possível importar o deck." }
+            finally { importLoading=false }
+        }
+    }
+
+    LaunchedEffect(Unit) { loadCatalogue() }
+
     MaterialTheme(colorScheme=darkColorScheme(primary=Blue,background=Navy,surface=Panel,onBackground=Color.White,onSurface=Color.White)) {
-        Column(Modifier.fillMaxSize().background(Navy).padding(horizontal=18.dp)) {
-            Spacer(Modifier.height(24.dp))
-            Text("GENESYS",color=Blue,fontSize=13.sp,fontWeight=FontWeight.Bold,letterSpacing=3.sp)
-            Text("Deck Calculator",color=Color.White,fontSize=29.sp,fontWeight=FontWeight.ExtraBold)
-            Text("Monte. Calcule. Vença.",color=Muted,fontSize=13.sp)
-            Spacer(Modifier.height(18.dp))
+        Column(Modifier.fillMaxSize().background(Navy).padding(horizontal=16.dp)) {
+            Spacer(Modifier.height(22.dp))
+            Text("GENESYS",color=Blue,fontSize=12.sp,fontWeight=FontWeight.Bold,letterSpacing=3.sp)
+            Text("Deck Calculator",color=Color.White,fontSize=28.sp,fontWeight=FontWeight.ExtraBold)
+            Text("Catálogo completo • Importação EDOPro",color=Muted,fontSize=12.sp)
+            Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).padding(5.dp)) {
-                listOf("Cartas","Meu deck").forEachIndexed { index,label ->
-                    Box(Modifier.weight(1f).background(if(tab==index) Blue.copy(alpha=.20f) else Color.Transparent,RoundedCornerShape(10.dp)).clickable { tab=index }.padding(12.dp),contentAlignment=Alignment.Center) {
-                        Text(label,color=if(tab==index) Blue else Muted,fontWeight=FontWeight.Bold)
+                listOf("Cartas","Meu deck","Adicionar deck").forEachIndexed { index,label ->
+                    Box(Modifier.weight(1f).background(if(tab==index) Blue.copy(alpha=.20f) else Color.Transparent,RoundedCornerShape(10.dp)).clickable { tab=index }.padding(vertical=11.dp,horizontal=3.dp),contentAlignment=Alignment.Center) {
+                        Text(label,color=if(tab==index) Blue else Muted,fontWeight=FontWeight.Bold,fontSize=11.sp)
                     }
                 }
             }
-            Spacer(Modifier.height(14.dp))
-            if(tab==0) {
-                Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).padding(horizontal=12.dp,vertical=5.dp),verticalAlignment=Alignment.CenterVertically) {
-                    Icon(Icons.Default.Search,null,tint=Muted)
-                    Spacer(Modifier.width(8.dp))
-                    BasicTextField(query,{query=it},Modifier.weight(1f).padding(vertical=12.dp),singleLine=true,textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=15.sp),decorationBox={ inner -> if(query.isEmpty()) Text("Pesquisar carta...",color=Muted); inner() })
-                    TextButton(onClick={search()}) { Text("BUSCAR") }
-                }
-                Spacer(Modifier.height(8.dp))
-                if(loading) LinearProgressIndicator(Modifier.fillMaxWidth(),color=Blue)
-                if(error.isNotEmpty()) Text(error,color=Color(0xFFFF9999),fontSize=12.sp,modifier=Modifier.padding(vertical=8.dp))
-                LazyColumn(verticalArrangement=Arrangement.spacedBy(9.dp),contentPadding=PaddingValues(bottom=20.dp)) {
-                    items(results,key={it.id}) { card ->
-                        Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(13.dp)).padding(9.dp),verticalAlignment=Alignment.CenterVertically) {
-                            AsyncImage(model=card.image,contentDescription=card.name,modifier=Modifier.width(62.dp).height(88.dp))
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(card.name,fontWeight=FontWeight.Bold,fontSize=14.sp)
-                                Text(card.type,color=Muted,fontSize=11.sp)
-                                Text(card.points.toString()+" pts Genesys",color=Blue,fontWeight=FontWeight.Bold,fontSize=13.sp)
-                            }
-                            IconButton(onClick={if(deck.count { it.id==card.id }<3) deck.add(card) else error="Limite de 3 cópias por carta."}) { Icon(Icons.Default.Add,"Adicionar",tint=Blue) }
-                        }
+            Spacer(Modifier.height(12.dp))
+            if(message.isNotEmpty()) Text(message,color=if(message.contains("não") || message.contains("Falha") || message.contains("Erro")) Color(0xFFFFA0A0) else Color(0xFF79D9AD),fontSize=12.sp,modifier=Modifier.padding(vertical=4.dp))
+            when(tab) {
+                0 -> {
+                    Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).padding(horizontal=12.dp,vertical=5.dp),verticalAlignment=Alignment.CenterVertically) {
+                        Icon(Icons.Default.Search,null,tint=Muted)
+                        Spacer(Modifier.width(8.dp))
+                        BasicTextField(query,{query=it},Modifier.weight(1f).padding(vertical=12.dp),singleLine=true,textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=15.sp),decorationBox={ inner -> if(query.isEmpty()) Text("Buscar entre todas as cartas...",color=Muted); inner() })
                     }
-                }
-            } else {
-                Row(verticalAlignment=Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("PONTUAÇÃO TOTAL",color=Muted,fontSize=11.sp,fontWeight=FontWeight.Bold)
-                        Text(total.toString()+" / 100",color=if(total>100) Color(0xFFFF7474) else Blue,fontSize=32.sp,fontWeight=FontWeight.ExtraBold)
+                    if(loading) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth(),color=Blue)
+                        Text("Baixando e preparando o catálogo completo...",color=Muted,fontSize=12.sp)
+                    } else {
+                        Text("${catalogue.size} cartas no catálogo • pesquisa local",color=Muted,fontSize=11.sp,modifier=Modifier.padding(vertical=8.dp))
                     }
-                    Text(deck.size.toString()+" cartas",color=Color.White,fontWeight=FontWeight.Bold)
-                }
-                Spacer(Modifier.height(10.dp))
-                OutlinedTextField(value=deckName,onValueChange={deckName=it},label={Text("Nome do deck")},singleLine=true,modifier=Modifier.fillMaxWidth())
-                Spacer(Modifier.height(10.dp))
-                if(deck.isEmpty()) {
-                    Box(Modifier.weight(1f).fillMaxWidth(),contentAlignment=Alignment.Center) { Text("Seu deck está vazio. Pesquise cartas e toque em +.",color=Muted) }
-                } else {
-                    LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp),contentPadding=PaddingValues(bottom=10.dp)) {
-                        items(deck.toList().distinctBy { it.id },key={it.id}) { card ->
-                            val count=deck.count { it.id==card.id }
-                            Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(12.dp)).padding(8.dp),verticalAlignment=Alignment.CenterVertically) {
-                                AsyncImage(model=card.image,contentDescription=card.name,modifier=Modifier.width(46.dp).height(65.dp))
-                                Spacer(Modifier.width(9.dp))
+                    LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp),contentPadding=PaddingValues(bottom=18.dp)) {
+                        items(filtered,key={it.id}) { card ->
+                            Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(13.dp)).padding(9.dp),verticalAlignment=Alignment.CenterVertically) {
+                                AsyncImage(model=card.image,contentDescription=card.name,modifier=Modifier.width(58.dp).height(82.dp))
+                                Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(card.name,fontWeight=FontWeight.Bold,fontSize=13.sp)
-                                    Text(card.points.toString()+" pts • "+(card.points*count)+" total",color=Blue,fontSize=12.sp)
+                                    Text(card.type,color=Muted,fontSize=10.sp,maxLines=2)
+                                    Text(if(card.points==null) "Sem pontuação disponível" else "${card.points} pts Genesys",color=Blue,fontWeight=FontWeight.Bold,fontSize=12.sp)
                                 }
-                                IconButton(onClick={deck.remove(card)}) { Icon(Icons.Default.Remove,null,tint=Muted) }
-                                Text(count.toString(),fontWeight=FontWeight.Bold)
-                                IconButton(onClick={if(count<3) deck.add(card)}) { Icon(Icons.Default.Add,null,tint=Blue) }
+                                IconButton(onClick={deck.add(DeckCard(card,section));message="Carta adicionada ao ${section.name}."}) { Icon(Icons.Default.Add,"Adicionar",tint=Blue) }
                             }
                         }
                     }
-                    Button(onClick={
-                        val text=deckName+"\n"+deck.joinToString("\n") { it.name+" — "+it.points+" pts" }+"\nTOTAL: "+total+"/100"
-                        val clipboard=context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText(deckName,text))
-                    },modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("COPIAR LISTA DO DECK",color=Navy,fontWeight=FontWeight.Bold) }
-                    TextButton(onClick={deck.clear()},modifier=Modifier.align(Alignment.CenterHorizontally)) { Text("Limpar deck",color=Color(0xFFFF9999)) }
+                }
+                1 -> {
+                    Row(verticalAlignment=Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("PONTUAÇÃO DO DECK",color=Muted,fontSize=10.sp,fontWeight=FontWeight.Bold)
+                            Text("$total / $limit",color=if(total>limit) Color(0xFFFF7474) else Blue,fontSize=30.sp,fontWeight=FontWeight.ExtraBold)
+                        }
+                        Text("${deck.size} cartas",color=Color.White,fontWeight=FontWeight.Bold)
+                    }
+                    OutlinedTextField(value=deckName,onValueChange={deckName=it},label={Text("Nome do deck")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                    OutlinedTextField(value=limit.toString(),onValueChange={it.toIntOrNull()?.takeIf { n -> n in 0..999 }?.let { limit=it }},label={Text("Limite de pontos")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                        DeckSection.values().forEach { area ->
+                            FilterChip(selected=section==area,onClick={section=area},label={Text(when(area){DeckSection.MAIN->"Main";DeckSection.EXTRA->"Extra";DeckSection.SIDE->"Side"})})
+                        }
+                    }
+                    LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(7.dp),contentPadding=PaddingValues(bottom=10.dp)) {
+                        items(deck.toList().filter { it.section==section },key={ "${it.card.id}-${it.section}-${deck.indexOf(it)}" }) { entry ->
+                            Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(12.dp)).padding(8.dp),verticalAlignment=Alignment.CenterVertically) {
+                                AsyncImage(model=entry.card.image,contentDescription=entry.card.name,modifier=Modifier.width(44.dp).height(62.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(entry.card.name,fontWeight=FontWeight.Bold,fontSize=12.sp)
+                                    Text((entry.card.points?.toString() ?: "—")+" pts • "+entry.section.name,color=Blue,fontSize=11.sp)
+                                }
+                                IconButton(onClick={deck.remove(entry)}) { Icon(Icons.Default.Remove,null,tint=Muted) }
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Button(onClick={tab=2},modifier=Modifier.weight(1f),colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("ADICIONAR DECK",color=Navy,fontWeight=FontWeight.Bold,fontSize=11.sp) }
+                        OutlinedButton(onClick={deck.clear()},modifier=Modifier.weight(1f)) { Text("LIMPAR",fontSize=11.sp) }
+                    }
+                }
+                else -> {
+                    Text("Importar deck do EDOPro",color=Color.White,fontSize=19.sp,fontWeight=FontWeight.Bold)
+                    Text("No EDOPro, use a opção de copiar/compartilhar o deck. Cole aqui o código ydke:// ou o conteúdo de um arquivo .ydk.",color=Muted,fontSize=12.sp)
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(value=deckName,onValueChange={deckName=it},label={Text("Nome do deck")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                    OutlinedTextField(value=importText,onValueChange={importText=it},label={Text("Código YDKE ou texto .ydk")},modifier=Modifier.fillMaxWidth().weight(1f),minLines=8,maxLines=16)
+                    Spacer(Modifier.height(10.dp))
+                    Button(onClick={importDeck()},enabled=!importLoading && catalogue.isNotEmpty(),modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=Blue)) {
+                        Text(if(importLoading) "IMPORTANDO..." else "IMPORTAR DECK",color=Navy,fontWeight=FontWeight.Bold)
+                    }
+                    TextButton(onClick={tab=1},modifier=Modifier.align(Alignment.CenterHorizontally)) { Text("Voltar ao deck",color=Muted) }
                 }
             }
-            Spacer(Modifier.height(10.dp))
-            Text("Cartas e pontuação: YGOPRODeck API v7",color=Muted,fontSize=10.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=12.dp))
+            Spacer(Modifier.height(8.dp))
+            Text("Catálogo e pontos: YGOPRODeck API v7 • dados armazenados localmente",color=Muted,fontSize=9.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=10.dp))
         }
     }
 }
