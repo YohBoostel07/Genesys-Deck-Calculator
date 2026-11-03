@@ -84,7 +84,7 @@ private fun parseCard(obj: JSONObject): YgoCard {
         is String -> raw.toIntOrNull()
         else -> null
     }
-    return YgoCard(obj.optInt("id"),obj.optString("name"),obj.optString("type"),image,points,obj.optString("desc"))
+    return YgoCard(obj.optInt("id"),obj.optString("name_en").ifBlank { obj.optString("name") },obj.optString("type"),image,points,obj.optString("desc"))
 }
 
 private fun encodeYdkePart(ids:List<Int>):String {
