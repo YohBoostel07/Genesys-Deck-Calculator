@@ -9,12 +9,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.layout.onSizeChanged
-import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -556,31 +550,8 @@ fun GenesysApp() {
                                         horizontalArrangement=Arrangement.spacedBy(5.dp)
                                     ) {
                                         rowCards.forEach { entry ->
-                                            var cardTileSize by remember(entry.card.id,area) { mutableStateOf(IntSize.Zero) }
                                             Column(
-                                                modifier=Modifier.weight(1f)
-                                                    .onSizeChanged { cardTileSize=it }
-                                                    .clickable { selectedCard=entry.card }
-                                                    .pointerInput(entry,cardTileSize) {
-                                                        awaitEachGesture {
-                                                            awaitFirstDown(requireUnconsumed=false)
-                                                            var remove=false
-                                                            var released=false
-                                                            withTimeoutOrNull(2000L) {
-                                                                while(!released && !remove) {
-                                                                    val event=awaitPointerEvent()
-                                                                    val change=event.changes.firstOrNull() ?: break
-                                                                    val p=change.position
-                                                                    if(p.x<0 || p.y<0 || p.x>cardTileSize.width || p.y>cardTileSize.height) remove=true
-                                                                    if(!change.pressed) released=true
-                                                                }
-                                                            } ?: run { remove=true }
-                                                            if(remove) {
-                                                                deck.remove(entry)
-                                                                message="${entry.card.name} removida do deck."
-                                                            }
-                                                        }
-                                                    },
+                                                modifier=Modifier.weight(1f).clickable { selectedCard=entry.card },
                                                 horizontalAlignment=Alignment.CenterHorizontally
                                             ) {
                                                 Box(Modifier.fillMaxWidth().aspectRatio(0.69f)) {
