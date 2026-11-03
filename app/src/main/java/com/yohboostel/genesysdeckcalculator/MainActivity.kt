@@ -51,7 +51,7 @@ private val Muted = Color(0xFF9BAEC5)
 private const val OFFICIAL_GENESYS_URL = "https://www.yugioh-card.com/en/genesys/"
 private fun normalizeCardName(value:String):String = Normalizer.normalize(value.lowercase(Locale.ROOT),Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"),"").replace(Regex("[^a-z0-9]"),"")
 
-data class YgoCard(val id:Int,val name:String,val type:String,val image:String,val points:Int?)
+data class YgoCard(val id:Int,val name:String,val type:String,val image:String,val points:Int?,val desc:String="")
 enum class DeckSection { MAIN, EXTRA, SIDE }
 data class DeckCard(val card:YgoCard,val section:DeckSection)
 data class SavedDeck(val id:String,val name:String,val limit:Int,val cards:List<DeckCard>)
@@ -65,14 +65,14 @@ class MainActivity : ComponentActivity() {
 
 private fun parseCard(obj: JSONObject): YgoCard {
     val images=obj.optJSONArray("card_images")
-    val image=if(images!=null && images.length()>0) images.getJSONObject(0).optString("image_url_small") else ""
+    val image=if(images!=null && images.length()>0) images.getJSONObject(0).optString("image_url") else ""
     val raw=obj.opt("genesys_points")
     val points=when(raw) {
         is Number -> raw.toInt()
         is String -> raw.toIntOrNull()
         else -> null
     }
-    return YgoCard(obj.optInt("id"),obj.optString("name"),obj.optString("type"),image,points)
+    return YgoCard(obj.optInt("id"),obj.optString("name"),obj.optString("type"),image,points,obj.optString("desc"))
 }
 
 private fun encodeYdkePart(ids:List<Int>):String {
@@ -171,7 +171,7 @@ fun GenesysApp() {
                     val cards=buildList {
                         for(j in 0 until cardsJson.length()) {
                             val card=cardsJson.getJSONObject(j)
-                            add(DeckCard(YgoCard(card.optInt("id"),card.optString("name"),card.optString("type"),card.optString("image"),if(card.isNull("points")) null else card.optInt("points")),DeckSection.valueOf(card.optString("section","MAIN"))))
+                            add(DeckCard(YgoCard(card.optInt("id"),card.optString("name"),card.optString("type"),card.optString("image"),if(card.isNull("points")) null else card.optInt("points"),card.optString("desc")),DeckSection.valueOf(card.optString("section","MAIN"))))
                         }
                     }
                     add(SavedDeck(item.optString("id"),item.optString("name"),item.optInt("limit",100),cards))
@@ -180,12 +180,14 @@ fun GenesysApp() {
         }
     }
     var activeDeckId by remember { mutableStateOf<String?>(null) }
+    var editingDeck by remember { mutableStateOf(false) }
+    var selectedCard by remember { mutableStateOf<YgoCard?>(null) }
     fun persistSavedDecks() {
         val array=org.json.JSONArray()
         savedDecks.forEach { saved ->
             val cardsJson=org.json.JSONArray()
             saved.cards.forEach { entry ->
-                cardsJson.put(JSONObject().put("id",entry.card.id).put("name",entry.card.name).put("type",entry.card.type).put("image",entry.card.image).put("points",entry.card.points ?: JSONObject.NULL).put("section",entry.section.name))
+                cardsJson.put(JSONObject().put("id",entry.card.id).put("name",entry.card.name).put("type",entry.card.type).put("image",entry.card.image).put("points",entry.card.points ?: JSONObject.NULL).put("desc",entry.card.desc).put("section",entry.section.name))
             }
             array.put(JSONObject().put("id",saved.id).put("name",saved.name).put("limit",saved.limit).put("cards",cardsJson))
         }
@@ -382,7 +384,7 @@ fun GenesysApp() {
                     Spacer(Modifier.height(18.dp))
                     Button(onClick={
                         if(deckName.isBlank()) message="Digite um nome para continuar."
-                        else { deckName=deckName.trim(); query=""; section=DeckSection.MAIN; tab=2 }
+                        else { deckName=deckName.trim(); query=""; section=DeckSection.MAIN; editingDeck=false; tab=2 }
                     },enabled=deckName.isNotBlank(),modifier=Modifier.fillMaxWidth().height(54.dp),colors=ButtonDefaults.buttonColors(containerColor=Blue)) {
                         Text("CONTINUAR PARA PESQUISA DE CARTAS",color=Navy,fontWeight=FontWeight.ExtraBold,fontSize=12.sp)
                     }
@@ -433,9 +435,9 @@ fun GenesysApp() {
                     LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp),contentPadding=PaddingValues(bottom=18.dp)) {
                         items(filtered,key={it.id}) { card ->
                             Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(13.dp)).padding(9.dp),verticalAlignment=Alignment.CenterVertically) {
-                                AsyncImage(model=card.image,contentDescription=card.name,modifier=Modifier.width(58.dp).height(82.dp))
+                                AsyncImage(model=card.image,contentDescription=card.name,modifier=Modifier.width(58.dp).height(82.dp).clickable { selectedCard=card })
                                 Spacer(Modifier.width(10.dp))
-                                Column(Modifier.weight(1f)) {
+                                Column(Modifier.weight(1f).clickable { selectedCard=card }) {
                                     Text(card.name,color=Color.White,fontWeight=FontWeight.Bold,fontSize=13.sp)
                                     Text(card.type,color=Color(0xFFD2DCE8),fontSize=10.sp,maxLines=2)
                                     Text(if(card.points==null) "Sem pontuação disponível" else "${card.points} pts Genesys",color=Blue,fontWeight=FontWeight.Bold,fontSize=12.sp)
@@ -461,7 +463,7 @@ fun GenesysApp() {
                             items(savedDecks,key={it.id}) { saved ->
                                 Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(13.dp)).padding(10.dp),verticalAlignment=Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f).clickable {
-                                        deck.clear();deck.addAll(saved.cards);deckName=saved.name;limit=saved.limit;activeDeckId=saved.id;tab=2
+                                        deck.clear();deck.addAll(saved.cards);deckName=saved.name;limit=saved.limit;activeDeckId=saved.id;section=DeckSection.MAIN;editingDeck=false;query="";tab=2
                                     }.padding(vertical=4.dp)) {
                                         Text(saved.name,color=Color.White,fontWeight=FontWeight.Bold,fontSize=15.sp)
                                         Text(saved.cards.size.toString()+" cartas • "+saved.cards.sumOf { it.card.points ?: 0 }+" / "+saved.limit+" pts",color=Muted,fontSize=11.sp)
@@ -486,21 +488,24 @@ fun GenesysApp() {
                             Text("Limite: $limit pts",color=Muted,fontSize=10.sp)
                         }
                     }
-                    Text("ADICIONAR CARTAS EM",color=Muted,fontSize=10.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=5.dp,bottom=3.dp))
+                    Row(Modifier.fillMaxWidth().padding(top=5.dp,bottom=5.dp),verticalAlignment=Alignment.CenterVertically) {
+                        Text("SEÇÕES DO DECK",color=Muted,fontSize=10.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
+                        TextButton(onClick={editingDeck=!editingDeck;query=""}) { Text(if(editingDeck) "CONCLUIR EDIÇÃO" else "EDITAR",color=Blue,fontWeight=FontWeight.ExtraBold,fontSize=11.sp) }
+                    }
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)) {
                         DeckSection.values().forEach { area ->
                             FilterChip(selected=section==area,onClick={section=area},label={Text(when(area){DeckSection.MAIN->"Main";DeckSection.EXTRA->"Extra";DeckSection.SIDE->"Side"})},colors=FilterChipDefaults.filterChipColors(selectedContainerColor=Blue.copy(alpha=.25f),selectedLabelColor=Blue,labelColor=Color.White))
                         }
                     }
-                    Text("Novas cartas serão adicionadas em: "+when(section){DeckSection.MAIN->"Main Deck";DeckSection.EXTRA->"Extra Deck";DeckSection.SIDE->"Side Deck"},color=Blue,fontSize=10.sp,modifier=Modifier.padding(bottom=4.dp))
-                    Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(12.dp)).padding(horizontal=10.dp,vertical=3.dp),verticalAlignment=Alignment.CenterVertically) {
+                    if(editingDeck) Text("ADICIONAR CARTAS EM: "+when(section){DeckSection.MAIN->"Main Deck";DeckSection.EXTRA->"Extra Deck";DeckSection.SIDE->"Side Deck"},color=Blue,fontSize=10.sp,modifier=Modifier.padding(bottom=4.dp))
+                    if(editingDeck) Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(12.dp)).padding(horizontal=10.dp,vertical=3.dp),verticalAlignment=Alignment.CenterVertically) {
                         Icon(Icons.Default.Search,null,tint=Muted)
                         Spacer(Modifier.width(8.dp))
                         BasicTextField(query,{query=it},Modifier.weight(1f).padding(vertical=11.dp),singleLine=true,textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=14.sp),decorationBox={ inner -> if(query.isEmpty()) Text("Pesquise cartas para adicionar...",color=Muted,fontSize=12.sp); inner() })
                         if(query.isNotEmpty()) TextButton(onClick={query=""}) { Text("LIMPAR",fontSize=9.sp) }
                     }
                     Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom=10.dp)) {
-                        if(query.isNotBlank()) {
+                        if(editingDeck && query.isNotBlank()) {
                             Text("RESULTADOS DA PESQUISA",color=Blue,fontWeight=FontWeight.ExtraBold,fontSize=11.sp,modifier=Modifier.padding(top=10.dp,bottom=5.dp))
                             if(loading) Text("Carregando catálogo...",color=Muted,fontSize=11.sp)
                             else if(filtered.isEmpty()) Text("Nenhuma carta encontrada.",color=Muted,fontSize=11.sp,modifier=Modifier.padding(vertical=8.dp))
@@ -523,7 +528,8 @@ fun GenesysApp() {
                         } else {
                             Text("PESQUISE ACIMA PARA ADICIONAR CARTAS",color=Muted,fontSize=10.sp,modifier=Modifier.padding(top=12.dp,bottom=8.dp))
                         }
-                        DeckSection.values().forEach { area ->
+                        run {
+                            val area=section
                             val areaCards=deck.filter { it.section==area }
                             Row(Modifier.fillMaxWidth().padding(top=6.dp,bottom=4.dp),verticalAlignment=Alignment.CenterVertically) {
                                 Text(when(area) { DeckSection.MAIN -> "DECK PRINCIPAL"; DeckSection.EXTRA -> "DECK ADICIONAL"; DeckSection.SIDE -> "DECK AUXILIAR" },color=Blue,fontWeight=FontWeight.ExtraBold,fontSize=13.sp,letterSpacing=1.sp)
@@ -541,7 +547,7 @@ fun GenesysApp() {
                                     ) {
                                         rowCards.forEach { entry ->
                                             Column(
-                                                modifier=Modifier.weight(1f).clickable { deck.remove(entry); message="${entry.card.name} removida do deck." },
+                                                modifier=Modifier.weight(1f).clickable { if(editingDeck) { deck.remove(entry); message="${entry.card.name} removida do deck." } else selectedCard=entry.card },
                                                 horizontalAlignment=Alignment.CenterHorizontally
                                             ) {
                                                 Box(Modifier.fillMaxWidth().aspectRatio(0.69f)) {
@@ -565,7 +571,7 @@ fun GenesysApp() {
                                 }
                             }
                         }
-                        Text("Toque em uma carta do deck para removê-la. As alterações aparecem imediatamente.",color=Muted,fontSize=10.sp,modifier=Modifier.padding(top=8.dp))
+                        Text(if(editingDeck) "Toque numa carta para removê-la. Use a busca para adicionar." else "Toque em EDITAR para adicionar ou remover cartas.",color=Muted,fontSize=10.sp,modifier=Modifier.padding(top=8.dp))
                     }
                     Button(onClick={saveCurrentDeck()},modifier=Modifier.fillMaxWidth().height(48.dp),colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("SALVAR DECK",color=Navy,fontWeight=FontWeight.ExtraBold,fontSize=13.sp) }
                     OutlinedButton(onClick={clipboard.setText(AnnotatedString(buildYdke(deck.toList())));message="Código YDKE copiado."},modifier=Modifier.fillMaxWidth()) { Text("EXPORTAR / COPIAR CÓDIGO YDKE",fontSize=11.sp) }
@@ -582,6 +588,23 @@ fun GenesysApp() {
                     }
                     TextButton(onClick={tab=1},modifier=Modifier.align(Alignment.CenterHorizontally)) { Text("Voltar aos decks",color=Muted) }
                 }
+            }
+            if(selectedCard!=null) {
+                val card=selectedCard!!
+                AlertDialog(onDismissRequest={selectedCard=null},containerColor=Panel,
+                    title={Text(card.name,color=Color.White,fontWeight=FontWeight.ExtraBold)},
+                    text={
+                        Row(Modifier.fillMaxWidth().heightIn(max=470.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                            AsyncImage(model=card.image,contentDescription=card.name,modifier=Modifier.width(125.dp).height(185.dp))
+                            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                                Text(card.type,color=Blue,fontSize=11.sp,fontWeight=FontWeight.Bold)
+                                Text("${card.points ?: 0} pontos Genesys",color=Color.White,fontSize=12.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=5.dp,bottom=10.dp))
+                                Text(card.desc.ifBlank { "Texto/efeito não disponível no catálogo." },color=Color.White,fontSize=12.sp,lineHeight=17.sp)
+                            }
+                        }
+                    },
+                    confirmButton={TextButton(onClick={selectedCard=null}) { Text("FECHAR",color=Blue,fontWeight=FontWeight.Bold) }}
+                )
             }
             Spacer(Modifier.height(8.dp))
             Text("Pontuação oficial Konami • sincronização ao abrir o app",color=Muted,fontSize=9.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=10.dp))
