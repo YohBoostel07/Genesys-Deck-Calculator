@@ -142,15 +142,38 @@ fun GenesysApp() {
         scope.launch {
             try {
                 val cards=withContext(Dispatchers.IO) {
-                    val cache=context.getFileStreamPath("genesys_cards_pt.json")
+                    val cache=context.getFileStreamPath("genesys_cards_all.json")
                     val cached=if(!force && cache.exists()) cache.readText() else null
                     val json=cached ?: run {
-                        val url="https://db.ygoprodeck.com/api/v7/cardinfo.php?format=genesys&language=pt"
-                        val request=Request.Builder().url(url).build()
-                        OkHttpClient().newCall(request).execute().use { response ->
-                            if(!response.isSuccessful) throw Exception("Falha ao baixar catálogo: HTTP "+response.code)
-                            response.body?.string() ?: throw Exception("Resposta vazia do catálogo.")
-                        }.also { context.openFileOutput("genesys_cards_pt.json",0).bufferedWriter().use { writer -> writer.write(it) } }
+                        val client=OkHttpClient()
+                        fun fetch(url:String): JSONObject {
+                            val request=Request.Builder().url(url).build()
+                            return client.newCall(request).execute().use { response ->
+                                if(!response.isSuccessful) throw Exception("Falha ao baixar catálogo: HTTP "+response.code)
+                                JSONObject(response.body?.string() ?: throw Exception("Resposta vazia do catálogo."))
+                            }
+                        }
+                        val allData=fetch("https://db.ygoprodeck.com/api/v7/cardinfo.php").optJSONArray("data")
+                            ?: throw Exception("A base completa de cartas não foi retornada.")
+                        val byId=linkedMapOf<Int,JSONObject>()
+                        for(i in 0 until allData.length()) {
+                            val obj=allData.getJSONObject(i)
+                            byId[obj.optInt("id")]=JSONObject(obj.toString())
+                        }
+                        val portuguese=fetch("https://db.ygoprodeck.com/api/v7/cardinfo.php?language=pt").optJSONArray("data")
+                        if(portuguese!=null) for(i in 0 until portuguese.length()) {
+                            val translated=portuguese.getJSONObject(i)
+                            val target=byId[translated.optInt("id")] ?: JSONObject().also { byId[translated.optInt("id")]=it }
+                            listOf("name","type","desc").forEach { key -> if(translated.has(key)) target.put(key,translated.opt(key)) }
+                        }
+                        val genesys=fetch("https://db.ygoprodeck.com/api/v7/cardinfo.php?format=genesys").optJSONArray("data")
+                        if(genesys!=null) for(i in 0 until genesys.length()) {
+                            val pointsCard=genesys.getJSONObject(i)
+                            byId[pointsCard.optInt("id")]?.put("genesys_points",pointsCard.opt("genesys_points"))
+                        }
+                        val merged=JSONObject().put("data",org.json.JSONArray().apply { byId.values.forEach { put(it) } }).toString()
+                        context.openFileOutput("genesys_cards_all.json",0).bufferedWriter().use { writer -> writer.write(merged) }
+                        merged
                     }
                     val array=JSONObject(json).optJSONArray("data") ?: throw Exception("O catálogo retornou um formato inesperado.")
                     buildList { for(i in 0 until array.length()) add(parseCard(array.getJSONObject(i))) }
@@ -279,7 +302,7 @@ fun GenesysApp() {
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Text("Catálogo e pontos: YGOPRODeck API v7 • dados armazenados localmente",color=Muted,fontSize=9.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=10.dp))
+            Text("Catálogo geral + traduções PT + pontos Genesys • cache local",color=Muted,fontSize=9.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=10.dp))
         }
     }
 }
