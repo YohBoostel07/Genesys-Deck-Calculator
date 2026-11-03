@@ -309,6 +309,8 @@ fun GenesysApp() {
                     ids.flatMap { (area,cardIds) -> cardIds.mapNotNull { id -> byId[id]?.let { DeckCard(it,area) } } }
                 }
                 val allIds=ids.values.flatten()
+                val overLimit=allIds.groupingBy { it }.eachCount().filterValues { it>3 }
+                require(overLimit.isEmpty()) { "O deck importado contém mais de 3 cópias de uma mesma carta. Corrija a lista antes de importar." }
                 val missing=allIds.size-imported.size
                 deck.clear()
                 deck.addAll(imported)
@@ -398,11 +400,15 @@ fun GenesysApp() {
                                 AsyncImage(model=card.image,contentDescription=card.name,modifier=Modifier.width(58.dp).height(82.dp))
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
-                                    Text(card.name,fontWeight=FontWeight.Bold,fontSize=13.sp)
-                                    Text(card.type,color=Muted,fontSize=10.sp,maxLines=2)
+                                    Text(card.name,color=Color.White,fontWeight=FontWeight.Bold,fontSize=13.sp)
+                                    Text(card.type,color=Color(0xFFD2DCE8),fontSize=10.sp,maxLines=2)
                                     Text(if(card.points==null) "Sem pontuação disponível" else "${card.points} pts Genesys",color=Blue,fontWeight=FontWeight.Bold,fontSize=12.sp)
                                 }
-                                IconButton(onClick={deck.add(DeckCard(card,section));message="Carta adicionada ao ${section.name}."}) { Icon(Icons.Default.Add,"Adicionar",tint=Blue) }
+                                IconButton(onClick={
+                                    val copies=deck.count { it.card.id==card.id }
+                                    if(copies>=3) message="Limite atingido: máximo de 3 cópias desta carta."
+                                    else { deck.add(DeckCard(card,section));message="Carta adicionada ao ${section.name}." }
+                                }) { Icon(Icons.Default.Add,"Adicionar",tint=Blue) }
                             }
                         }
                     }
@@ -418,7 +424,7 @@ fun GenesysApp() {
                         LazyColumn(verticalArrangement=Arrangement.spacedBy(9.dp),contentPadding=PaddingValues(bottom=16.dp)) {
                             items(savedDecks,key={it.id}) { saved ->
                                 Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(13.dp)).clickable {
-                                    deck.clear();deck.addAll(saved.cards);deckName=saved.name;limit=saved.limit;activeDeckId=saved.id;tab=3
+                                    deck.clear();deck.addAll(saved.cards);deckName=saved.name;limit=saved.limit;activeDeckId=saved.id;tab=2
                                 }.padding(12.dp),verticalAlignment=Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text(saved.name,color=Color.White,fontWeight=FontWeight.Bold,fontSize=15.sp)
@@ -431,7 +437,7 @@ fun GenesysApp() {
                     }
                 }
                 2 -> {
-                    OutlinedTextField(value=deckName,onValueChange={deckName=it},label={Text("Nome do deck")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                    OutlinedTextField(value=deckName,onValueChange={deckName=it},label={Text("Nome do deck")},singleLine=true,modifier=Modifier.fillMaxWidth(),colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,focusedLabelColor=Blue,unfocusedLabelColor=Muted,cursorColor=Blue))
                     Row(Modifier.fillMaxWidth().padding(top=3.dp,bottom=5.dp),verticalAlignment=Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(deckName,color=Color.White,fontSize=13.sp,fontWeight=FontWeight.Bold,maxLines=1)
@@ -470,11 +476,18 @@ fun GenesysApp() {
                                                 modifier=Modifier.weight(1f).clickable { deck.remove(entry) },
                                                 horizontalAlignment=Alignment.CenterHorizontally
                                             ) {
-                                                AsyncImage(
-                                                    model=entry.card.image,
-                                                    contentDescription="Remover ${entry.card.name} do deck",
-                                                    modifier=Modifier.fillMaxWidth().aspectRatio(0.69f)
-                                                )
+                                                Box(Modifier.fillMaxWidth().aspectRatio(0.69f)) {
+                                                    AsyncImage(
+                                                        model=entry.card.image,
+                                                        contentDescription="Remover ${entry.card.name} do deck",
+                                                        modifier=Modifier.fillMaxSize()
+                                                    )
+                                                    if(entry.card.points!=null) {
+                                                        Box(Modifier.align(Alignment.TopEnd).padding(2.dp).background(Blue,RoundedCornerShape(6.dp)).padding(horizontal=4.dp,vertical=2.dp)) {
+                                                            Text("${entry.card.points} pts",color=Navy,fontSize=8.sp,fontWeight=FontWeight.ExtraBold)
+                                                        }
+                                                    }
+                                                }
                                                 Text(entry.card.name,color=Color.White,fontSize=8.sp,lineHeight=9.sp,maxLines=2,minLines=2,fontWeight=FontWeight.Medium)
                                                 Text("${entry.card.points ?: 0} pts",color=Blue,fontSize=8.sp,fontWeight=FontWeight.Bold)
                                             }
@@ -496,7 +509,7 @@ fun GenesysApp() {
                     Text("No EDOPro, use a opção de copiar/compartilhar o deck. Cole aqui o código ydke:// ou o conteúdo de um arquivo .ydk.",color=Muted,fontSize=12.sp)
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(value=deckName,onValueChange={deckName=it},label={Text("Nome do deck")},singleLine=true,modifier=Modifier.fillMaxWidth())
-                    OutlinedTextField(value=importText,onValueChange={importText=it},label={Text("Código YDKE ou texto .ydk")},modifier=Modifier.fillMaxWidth().weight(1f),minLines=8,maxLines=16)
+                    OutlinedTextField(value=importText,onValueChange={importText=it},label={Text("Código YDKE ou texto .ydk")},modifier=Modifier.fillMaxWidth().weight(1f),minLines=8,maxLines=16,colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,focusedLabelColor=Blue,unfocusedLabelColor=Muted,cursorColor=Blue))
                     Spacer(Modifier.height(10.dp))
                     Button(onClick={importDeck()},enabled=!importLoading && catalogue.isNotEmpty(),modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=Blue)) {
                         Text(if(importLoading) "IMPORTANDO..." else "IMPORTAR DECK",color=Navy,fontWeight=FontWeight.Bold)
