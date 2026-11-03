@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -30,6 +31,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -438,7 +441,7 @@ fun GenesysApp() {
                 4 -> {
                     Spacer(Modifier.height(24.dp))
                     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                        Box(Modifier.size(48.dp).background(Brush.linearGradient(listOf(Color(0xFF168BFF),Color(0xFF42D7FF))),RoundedCornerShape(15.dp)),contentAlignment=Alignment.Center) { Text("G",color=Navy,fontSize=29.sp,fontWeight=FontWeight.Black) }
+                        Box(Modifier.size(48.dp).background(Brush.linearGradient(listOf(Color(0xFF168BFF),Color(0xFF42D7FF))),RoundedCornerShape(15.dp)),contentAlignment=Alignment.Center) { Image(painter=painterResource(id=R.drawable.ic_launcher_art),contentDescription="Ícone Genesys Deck Calculator",contentScale=ContentScale.Crop,modifier=Modifier.fillMaxSize()) }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text("GENESYS",color=Blue,fontSize=12.sp,fontWeight=FontWeight.ExtraBold,letterSpacing=4.sp)
@@ -481,7 +484,7 @@ fun GenesysApp() {
                         }
                         Column(Modifier.weight(1f).height(112.dp).background(Color(0xFF14243A),RoundedCornerShape(19.dp)).clickable { tab=0 }.padding(15.dp),verticalArrangement=Arrangement.SpaceBetween) {
                             Icon(Icons.Default.Search,null,tint=Color(0xFFB69AFF),modifier=Modifier.size(24.dp))
-                            Text("EXPLORAR CARTAS",color=Color.White,fontSize=13.sp,fontWeight=FontWeight.Black)
+                            Text("PESQUISAR CARTAS",color=Color.White,fontSize=13.sp,fontWeight=FontWeight.Black)
                         }
                     }
                     Spacer(Modifier.weight(1f))
