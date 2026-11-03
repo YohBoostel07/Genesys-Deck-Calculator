@@ -219,6 +219,7 @@ fun GenesysApp() {
     var editingDeck by remember { mutableStateOf(false) }
     var deckSearchActive by remember { mutableStateOf(false) }
     var selectedCard by remember { mutableStateOf<YgoCard?>(null) }
+    var deckPendingDelete by remember { mutableStateOf<SavedDeck?>(null) }
     fun persistSavedDecks() {
         val array=org.json.JSONArray()
         savedDecks.forEach { saved ->
@@ -260,6 +261,7 @@ fun GenesysApp() {
         persistSavedDecks()
         query=""
         deckSearchActive=false
+        editingDeck=false
         message="Deck salvo: ${saved.name}"
     }
     val scope= rememberCoroutineScope()
@@ -538,7 +540,7 @@ fun GenesysApp() {
                                         Text(saved.cards.size.toString()+" cartas • "+saved.cards.sumOf { it.card.points ?: 0 }+" / "+saved.limit+" pts",color=Muted,fontSize=11.sp)
                                     }
                                     TextButton(onClick={clipboard.setText(AnnotatedString(buildYdke(saved.cards)));message="Código YDKE copiado."}) { Text("EXPORTAR",color=Blue,fontSize=10.sp) }
-                                    TextButton(onClick={savedDecks.remove(saved);persistSavedDecks()}) { Text("EXCLUIR",color=Color(0xFFFF8888),fontSize=10.sp) }
+                                    TextButton(onClick={deckPendingDelete=saved}) { Text("EXCLUIR",color=Color(0xFFFF8888),fontSize=10.sp) }
                                 }
                             }
                         }
@@ -634,7 +636,9 @@ fun GenesysApp() {
                             }
                             Text(if(editingDeck) "Toque numa carta para removê-la. Use a pesquisa para adicionar." else "Toque em EDITAR para adicionar ou remover cartas.",color=Muted,fontSize=10.sp,modifier=Modifier.padding(top=8.dp))
                         }
-                        Button(onClick={saveCurrentDeck()},modifier=Modifier.fillMaxWidth().height(46.dp),shape=RoundedCornerShape(12.dp),colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("SALVAR DECK",color=Navy,fontWeight=FontWeight.ExtraBold,fontSize=13.sp) }
+                        if(editingDeck) {
+                            Button(onClick={saveCurrentDeck()},modifier=Modifier.fillMaxWidth().height(46.dp),shape=RoundedCornerShape(12.dp),colors=ButtonDefaults.buttonColors(containerColor=Blue)) { Text("SALVAR DECK",color=Navy,fontWeight=FontWeight.ExtraBold,fontSize=13.sp) }
+                        }
                         OutlinedButton(onClick={clipboard.setText(AnnotatedString(buildYdke(deck.toList())));message="Código YDKE copiado."},modifier=Modifier.fillMaxWidth().height(42.dp),shape=RoundedCornerShape(12.dp)) { Text("EXPORTAR / COPIAR CÓDIGO YDKE",fontSize=11.sp) }
                     }
                 }
@@ -650,6 +654,26 @@ fun GenesysApp() {
                     }
                     TextButton(onClick={tab=1},modifier=Modifier.align(Alignment.CenterHorizontally)) { Text("Voltar aos decks",color=Muted) }
                 }
+            }
+            if(deckPendingDelete!=null) {
+                val deckToDelete=deckPendingDelete!!
+                AlertDialog(
+                    onDismissRequest={deckPendingDelete=null},
+                    containerColor=Panel,
+                    title={Text("Excluir deck?",color=Color.White,fontWeight=FontWeight.ExtraBold)},
+                    text={Text("Tem certeza de que deseja excluir o deck \"${deckToDelete.name}\"? Esta ação não poderá ser desfeita.",color=Color.White)},
+                    confirmButton={
+                        TextButton(onClick={
+                            savedDecks.removeAll { it.id==deckToDelete.id }
+                            persistSavedDecks()
+                            deckPendingDelete=null
+                            message="Deck \"${deckToDelete.name}\" excluído."
+                        }) { Text("EXCLUIR",color=Color(0xFFFF8888),fontWeight=FontWeight.Bold) }
+                    },
+                    dismissButton={
+                        TextButton(onClick={deckPendingDelete=null}) { Text("CANCELAR",color=Blue,fontWeight=FontWeight.Bold) }
+                    }
+                )
             }
             if(selectedCard!=null) {
                 val card=selectedCard!!
