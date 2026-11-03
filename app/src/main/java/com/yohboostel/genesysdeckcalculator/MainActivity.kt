@@ -10,8 +10,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.awaitPointerEvent
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.layout.onSizeChanged
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
