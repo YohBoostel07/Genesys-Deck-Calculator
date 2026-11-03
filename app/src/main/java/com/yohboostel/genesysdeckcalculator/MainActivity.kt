@@ -383,27 +383,7 @@ fun GenesysApp() {
 
     MaterialTheme(colorScheme=darkColorScheme(primary=Blue,secondary=AccentGreen,background=Navy,surface=Panel,onBackground=Color.White,onSurface=Color.White)) {
         Column(Modifier.fillMaxSize().background(Navy).padding(horizontal=14.dp)) {
-            if(tab!=2 && tab!=4) {
-                Spacer(Modifier.height(22.dp))
-                Text("GENESYS",color=Blue,fontSize=11.sp,fontWeight=FontWeight.Bold,letterSpacing=3.sp)
-                Text("Deck Calculator",color=Color.White,fontSize=26.sp,fontWeight=FontWeight.ExtraBold)
-                Text("Monte e gerencie seus decks",color=Muted,fontSize=12.sp)
-                Spacer(Modifier.height(16.dp))
-            } else {
-                Spacer(Modifier.height(5.dp))
-            }
-            if(tab!=4) {
-                Row(verticalAlignment=Alignment.CenterVertically) {
-                    IconButton(onClick={goBack()}) { Icon(Icons.Default.ArrowBack,contentDescription="Voltar",tint=Blue) }
-                    Row(Modifier.weight(1f).background(SurfaceRaised,RoundedCornerShape(13.dp)).padding(4.dp)) {
-                    listOf("Cartas","Decks","Editor","Importar").forEachIndexed { index,label ->
-                        Box(Modifier.weight(1f).background(if(tab==index) Blue else Color.Transparent,RoundedCornerShape(9.dp)).clickable { tab=index }.padding(vertical=9.dp,horizontal=2.dp),contentAlignment=Alignment.Center) {
-                            Text(label,color=if(tab==index) Navy else Muted,fontWeight=FontWeight.Bold,fontSize=11.sp)
-                        }
-                    }
-                    }
-                }
-            }
+            Spacer(Modifier.height(if(tab==4) 5.dp else 8.dp))
             Spacer(Modifier.height(if(tab==1) 4.dp else 12.dp))
             if(message.isNotEmpty() && tab!=3) Text(message,color=if(message.contains("não") || message.contains("Falha") || message.contains("Erro")) Color(0xFFFFA0A0) else AccentGreen,fontSize=11.sp,modifier=Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(10.dp)).padding(horizontal=11.dp,vertical=8.dp))
             when(tab) {
