@@ -1,6 +1,8 @@
 package com.yohboostel.genesysdeckcalculator
 
 import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
 import android.util.Base64
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -657,8 +659,17 @@ fun GenesysApp() {
                     confirmButton={TextButton(onClick={selectedCard=null}) { Text("FECHAR",color=Blue,fontWeight=FontWeight.Bold) }}
                 )
             }
-            Spacer(Modifier.height(8.dp))
-            Text("Pontuação oficial Konami • sincronização ao abrir o app",color=Muted,fontSize=9.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=10.dp))
+            Spacer(Modifier.height(5.dp))
+            Text("Pontuação oficial Konami • sincronização ao abrir o app",color=Muted,fontSize=9.sp,modifier=Modifier.align(Alignment.CenterHorizontally))
+            Text(
+                "Criado por @yohann_boostel  •  Instagram",
+                color=Blue,
+                fontSize=10.sp,
+                fontWeight=FontWeight.SemiBold,
+                modifier=Modifier.align(Alignment.CenterHorizontally).clickable {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.instagram.com/yohann_boostel/")))
+                }.padding(top=4.dp,bottom=8.dp)
+            )
         }
     }
 }
