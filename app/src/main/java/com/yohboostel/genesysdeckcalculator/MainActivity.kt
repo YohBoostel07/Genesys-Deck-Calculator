@@ -26,6 +26,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -151,6 +154,27 @@ private fun parseDeckCode(raw:String): Map<DeckSection,List<Int>> {
     return parsed
 }
 
+@Composable
+private fun TechCircuitBackground() {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val step = 34.dp.toPx()
+        val grid = Color(0xFF17365B).copy(alpha = 0.20f)
+        var x = 0f
+        while (x < size.width) { drawLine(grid, Offset(x, 0f), Offset(x, size.height), 1f); x += step }
+        var y = 0f
+        while (y < size.height) { drawLine(grid, Offset(0f, y), Offset(size.width, y), 1f); y += step }
+        val glow = Color(0xFF168BFF).copy(alpha = 0.22f)
+        val nodes = listOf(Offset(size.width*.08f,size.height*.18f), Offset(size.width*.91f,size.height*.28f), Offset(size.width*.78f,size.height*.82f), Offset(size.width*.14f,size.height*.76f))
+        nodes.forEachIndexed { index, point ->
+            val next = nodes[(index + 1) % nodes.size]
+            val midX = (point.x + next.x) / 2f
+            drawLine(glow, point, Offset(midX, point.y), 2f)
+            drawLine(glow, Offset(midX, point.y), Offset(midX, next.y), 2f)
+            drawCircle(glow, 5.dp.toPx(), point)
+            drawCircle(glow.copy(alpha=.10f), 18.dp.toPx(), point, style=Stroke(1.dp.toPx()))
+        }
+    }
+}
 @Composable
 fun GenesysApp() {
     val context=androidx.compose.ui.platform.LocalContext.current
@@ -387,7 +411,9 @@ fun GenesysApp() {
     LaunchedEffect(Unit) { loadCatalogue() }
 
     MaterialTheme(colorScheme=darkColorScheme(primary=Blue,secondary=AccentGreen,background=Navy,surface=Panel,onBackground=Color.White,onSurface=Color.White)) {
-        Column(Modifier.fillMaxSize().background(Navy).padding(horizontal=14.dp)) {
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF07101F), Color(0xFF0A1830), Color(0xFF050B16))))) {
+            TechCircuitBackground()
+            Column(Modifier.fillMaxSize().padding(horizontal=16.dp)) {
             Spacer(Modifier.height(if(tab==4) 5.dp else 8.dp))
             Spacer(Modifier.height(if(tab==1) 4.dp else 12.dp))
             if(message.isNotEmpty() && tab!=3) Text(message,color=if(message.contains("não") || message.contains("Falha") || message.contains("Erro")) Color(0xFFFFA0A0) else AccentGreen,fontSize=11.sp,modifier=Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(10.dp)).padding(horizontal=11.dp,vertical=8.dp))
