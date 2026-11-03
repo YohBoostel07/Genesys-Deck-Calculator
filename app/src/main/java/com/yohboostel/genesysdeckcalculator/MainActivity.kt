@@ -436,29 +436,56 @@ fun GenesysApp() {
                     TextButton(onClick={tab=1},modifier=Modifier.align(Alignment.CenterHorizontally)) { Text("Cancelar",color=Muted) }
                 }
                 4 -> {
-                    Spacer(Modifier.height(42.dp))
-                    Text("GENESYS",color=Blue,fontSize=12.sp,fontWeight=FontWeight.Bold,letterSpacing=4.sp)
-                    Text("DECK CALCULATOR",color=Color.White,fontSize=29.sp,fontWeight=FontWeight.ExtraBold,lineHeight=34.sp)
-                    Text("Seu espaço para montar decks.",color=Muted,fontSize=13.sp,modifier=Modifier.padding(top=5.dp,bottom=26.dp))
-                    Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                        Button(onClick={tab=1},modifier=Modifier.fillMaxWidth().height(62.dp),shape=RoundedCornerShape(14.dp),colors=ButtonDefaults.buttonColors(containerColor=Blue)) {
-                            Column(horizontalAlignment=Alignment.CenterHorizontally) {
-                                Text("DECKS",color=Navy,fontSize=17.sp,fontWeight=FontWeight.ExtraBold)
-                                Text("${savedDecks.size} decks salvos",color=Navy.copy(alpha=.75f),fontSize=11.sp)
-                            }
+                    Spacer(Modifier.height(24.dp))
+                    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                        Box(Modifier.size(48.dp).background(Brush.linearGradient(listOf(Color(0xFF168BFF),Color(0xFF42D7FF))),RoundedCornerShape(15.dp)),contentAlignment=Alignment.Center) { Text("G",color=Navy,fontSize=29.sp,fontWeight=FontWeight.Black) }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("GENESYS",color=Blue,fontSize=12.sp,fontWeight=FontWeight.ExtraBold,letterSpacing=4.sp)
+                            Text("DECK CALCULATOR",color=Color.White,fontSize=18.sp,fontWeight=FontWeight.Black,letterSpacing=1.sp)
                         }
-                        OutlinedButton(onClick={deckName="";importText="";tab=3},modifier=Modifier.fillMaxWidth().height(58.dp),shape=RoundedCornerShape(14.dp)) {
-                            Text("IMPORTAR DECK",fontSize=15.sp,fontWeight=FontWeight.Bold)
+                        Text("● ONLINE",color=AccentGreen,fontSize=9.sp,fontWeight=FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(26.dp))
+                    Box(Modifier.fillMaxWidth().height(190.dp).background(Brush.linearGradient(listOf(Color(0xFF123D68),Color(0xFF101E38),Color(0xFF102B42))),RoundedCornerShape(24.dp))) {
+                        Canvas(Modifier.fillMaxSize()) {
+                            val c=Offset(size.width*.79f,size.height*.48f)
+                            for(i in 1..5) drawCircle(Color(0xFF49B9FF).copy(alpha=.16f),i*25.dp.toPx(),c,style=Stroke(1.2.dp.toPx()))
+                            drawLine(Color(0xFF4BC8FF).copy(alpha=.55f),Offset(size.width*.52f,size.height*.78f),Offset(size.width*.93f,size.height*.20f),2.dp.toPx())
                         }
-                        OutlinedButton(onClick={deck.clear();deckName="";limit=100;activeDeckId=null;query="";tab=5},modifier=Modifier.fillMaxWidth().height(58.dp),shape=RoundedCornerShape(14.dp)) {
-                            Text("CRIAR NOVO DECK",fontSize=15.sp,fontWeight=FontWeight.Bold)
+                        Column(Modifier.align(Alignment.CenterStart).padding(start=19.dp,end=95.dp)) {
+                            Text("DUEL SYSTEM",color=Color(0xFF71D8FF),fontSize=10.sp,fontWeight=FontWeight.Bold,letterSpacing=3.sp)
+                            Text("Monte seu deck perfeito.",color=Color.White,fontSize=25.sp,lineHeight=29.sp,fontWeight=FontWeight.Black)
+                            Text("Construa • Analise • Domine",color=Color(0xFFB7D5F0),fontSize=11.sp,modifier=Modifier.padding(top=8.dp))
                         }
-                        OutlinedButton(onClick={tab=0},modifier=Modifier.fillMaxWidth().height(58.dp),shape=RoundedCornerShape(14.dp)) {
-                            Text("BUSCAR CARTAS",fontSize=15.sp,fontWeight=FontWeight.Bold)
+                        Text("GX",Modifier.align(Alignment.CenterEnd).padding(end=15.dp),color=Color(0xFF6BCBFF).copy(alpha=.72f),fontSize=39.sp,fontWeight=FontWeight.Black)
+                    }
+                    Spacer(Modifier.height(22.dp))
+                    Text("CENTRAL DE COMANDO",color=Color.White,fontSize=12.sp,fontWeight=FontWeight.ExtraBold,letterSpacing=2.sp)
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement=Arrangement.spacedBy(11.dp)) {
+                        Column(Modifier.weight(1f).height(140.dp).background(Brush.linearGradient(listOf(Color(0xFF168BFF),Color(0xFF07518E))),RoundedCornerShape(19.dp)).clickable { tab=1 }.padding(15.dp),verticalArrangement=Arrangement.SpaceBetween) {
+                            Icon(Icons.Default.Add,null,tint=Color.White,modifier=Modifier.size(27.dp))
+                            Column { Text("MEUS DECKS",color=Color.White,fontSize=14.sp,fontWeight=FontWeight.Black); Text("${savedDecks.size} listas salvas",color=Color.White.copy(alpha=.78f),fontSize=10.sp) }
+                        }
+                        Column(Modifier.weight(1f).height(140.dp).background(Color(0xFF14243A),RoundedCornerShape(19.dp)).clickable { deckName="";importText="";tab=3 }.padding(15.dp),verticalArrangement=Arrangement.SpaceBetween) {
+                            Icon(Icons.Default.ArrowBack,null,tint=Color(0xFF6CCBFF),modifier=Modifier.size(27.dp))
+                            Column { Text("IMPORTAR",color=Color.White,fontSize=14.sp,fontWeight=FontWeight.Black); Text("EDOPro • YDKE • YDK",color=Muted,fontSize=10.sp) }
+                        }
+                    }
+                    Spacer(Modifier.height(11.dp))
+                    Row(horizontalArrangement=Arrangement.spacedBy(11.dp)) {
+                        Column(Modifier.weight(1f).height(112.dp).background(Color(0xFF14243A),RoundedCornerShape(19.dp)).clickable { deck.clear();deckName="";limit=100;activeDeckId=null;query="";tab=5 }.padding(15.dp),verticalArrangement=Arrangement.SpaceBetween) {
+                            Icon(Icons.Default.Add,null,tint=AccentGreen,modifier=Modifier.size(24.dp))
+                            Text("NOVO DECK",color=Color.White,fontSize=13.sp,fontWeight=FontWeight.Black)
+                        }
+                        Column(Modifier.weight(1f).height(112.dp).background(Color(0xFF14243A),RoundedCornerShape(19.dp)).clickable { tab=0 }.padding(15.dp),verticalArrangement=Arrangement.SpaceBetween) {
+                            Icon(Icons.Default.Search,null,tint=Color(0xFFB69AFF),modifier=Modifier.size(24.dp))
+                            Text("EXPLORAR CARTAS",color=Color.White,fontSize=13.sp,fontWeight=FontWeight.Black)
                         }
                     }
                     Spacer(Modifier.weight(1f))
-                    Text("Pontuação oficial Genesys • Konami",color=Muted,fontSize=11.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=18.dp))
+                    Text("GENESYS FORMAT • PONTUAÇÃO OFICIAL KONAMI",color=Muted,fontSize=9.sp,letterSpacing=1.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=18.dp))
                 }
                 0 -> {
                     Row(Modifier.fillMaxWidth().background(SurfaceRaised,RoundedCornerShape(12.dp)).padding(horizontal=12.dp,vertical=3.dp),verticalAlignment=Alignment.CenterVertically) {
